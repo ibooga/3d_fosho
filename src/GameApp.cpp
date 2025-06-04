@@ -4,7 +4,7 @@
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
 #include <OgreVector3.h>
-#include <fstream>
+#include <OgreStringConverter.h>
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -50,6 +50,8 @@ bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 
 void InputHandler::update(float dt)
 {
+    if (mApp->mGameState.paused || mApp->mGameState.gameOver)
+        return;
     const float speed = 5.0f;
     Ogre::Vector3 disp = mDirection * speed * dt;
     mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
@@ -70,7 +72,10 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mSceneMgr(nullptr),
                      mTrayMgr(nullptr),
                      mOverlaySystem(nullptr),
-                     mInputHandler(nullptr)
+                     mInputHandler(nullptr),
+                     mCrosshair(nullptr),
+                     mHealthBar(nullptr),
+                     mScoreLabel(nullptr)
 {
 }
 
@@ -93,6 +98,9 @@ GameApp::~GameApp()
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
+
+    delete mInputHandler;
+    mInputHandler = nullptr;
 
     delete mDynamicsWorld;
     mDynamicsWorld = nullptr;
@@ -123,6 +131,10 @@ void GameApp::setup()
     addInputListener(mTrayMgr);
 
     mTrayMgr->createLabel(OgreBites::TL_TOP, "Controls", "INSERT COIN - WASD to Move, SPACE to Jump, LMB to Shoot", 400);
+    mCrosshair = mTrayMgr->createLabel(OgreBites::TL_CENTER, "Crosshair", "+", 50);
+    mHealthBar = mTrayMgr->createProgressBar(OgreBites::TL_BOTTOM, "Health", 200, 20);
+    mHealthBar->setProgress(1.0f);
+    mScoreLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Score", "Score: 0", 120);
 
     // camera
     Ogre::Camera* cam = mSceneMgr->createCamera("MainCam");
@@ -172,26 +184,54 @@ bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
     {
         getRoot()->queueEndRendering();
     }
+    else if (evt.keysym.sym == OgreBites::SDLK_p)
+    {
+        if (!mGameState.gameOver)
+            togglePause();
+    }
+    else if (evt.keysym.sym == OgreBites::SDLK_r)
+    {
+        if (mGameState.gameOver)
+            restartGame();
+    }
     return true;
 }
 
 bool GameApp::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
-    if (evt.button == OgreBites::BUTTON_LEFT)
+    if (evt.button == OgreBites::BUTTON_LEFT && !mGameState.paused && !mGameState.gameOver)
     {
-        Ogre::Vector3 pos = mCameraNode->getPosition();
-        Ogre::Quaternion orient = mCameraNode->getOrientation();
-        createBullet(pos + orient * Ogre::Vector3(0,0,-1), orient);
+        if (mGameState.ammo > 0)
+        {
+            Ogre::Vector3 pos = mCameraNode->getPosition();
+            Ogre::Quaternion orient = mCameraNode->getOrientation();
+            createBullet(pos + orient * Ogre::Vector3(0,0,-1), orient);
+            --mGameState.ammo;
+            ++mGameState.score;
+            if (mGameState.score >= 10)
+                setGameOver(true);
+            else if (mGameState.ammo == 0)
+                setGameOver(false);
+        }
     }
     return true;
 }
 
 bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
 {
-    if (mDynamicsWorld)
-        mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
-    if (mInputHandler)
-        mInputHandler->update(evt.timeSinceLastFrame);
+    if (!mGameState.paused && !mGameState.gameOver)
+    {
+        if (mDynamicsWorld)
+            mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
+        if (mInputHandler)
+            mInputHandler->update(evt.timeSinceLastFrame);
+
+        mGameState.health -= static_cast<int>(evt.timeSinceLastFrame * 5.0f);
+        if (mGameState.health <= 0)
+            setGameOver(false);
+    }
+
+    updateHUD();
     return true;
 }
 
@@ -219,38 +259,43 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
     mDynamicsWorld->addRigidBody(body);
 }
 
-void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
+void GameApp::togglePause()
 {
-    Ogre::Entity* cube = mSceneMgr->createEntity("Cube.mesh");
-    Ogre::SceneNode* node = mSceneMgr->getRootSceneNode()->createChildSceneNode(position);
-    node->setScale(scale);
-    node->attachObject(cube);
-
-    btVector3 halfExtents(scale.x * 50.0f, scale.y * 50.0f, scale.z * 50.0f);
-    btCollisionShape* box = new btBoxShape(halfExtents);
-    mCollisionShapes.push_back(box);
-    btTransform tr;
-    tr.setIdentity();
-    tr.setOrigin(btVector3(position.x, position.y, position.z));
-    btDefaultMotionState* motion = new btDefaultMotionState(tr);
-    btRigidBody::btRigidBodyConstructionInfo info(0.0f, motion, box);
-    btRigidBody* body = new btRigidBody(info);
-    mDynamicsWorld->addRigidBody(body);
+    mGameState.paused = !mGameState.paused;
+    if (mGameState.paused)
+    {
+        mTrayMgr->createLabel(OgreBites::TL_CENTER, "PauseLabel",
+                              "PAUSED - P to Resume, Esc to Quit", 300);
+    }
+    else
+    {
+        mTrayMgr->destroyWidget("PauseLabel");
+    }
 }
 
-void GameApp::loadLevel(const std::string& filename)
+void GameApp::updateHUD()
 {
-    std::ifstream file(filename);
-    if (!file.is_open())
-        return;
+    if (mHealthBar)
+        mHealthBar->setProgress(static_cast<Ogre::Real>(mGameState.health) / 100.0f);
+    if (mScoreLabel)
+        mScoreLabel->setCaption("Score: " + Ogre::StringConverter::toString(mGameState.score));
+}
 
-    std::string type;
-    float x, y, z, sx, sy, sz;
-    while (file >> type >> x >> y >> z >> sx >> sy >> sz)
-    {
-        Ogre::Vector3 pos(x, y, z);
-        Ogre::Vector3 scale(sx, sy, sz);
-        if (type == "wall" || type == "obstacle" || type == "item")
-            addStaticCube(pos, scale);
-    }
+void GameApp::setGameOver(bool won)
+{
+    mGameState.gameOver = true;
+    mGameState.won = won;
+    Ogre::String text = won ? "YOU WIN! R to Restart or Esc to Quit" :
+                               "GAME OVER - R to Restart or Esc to Quit";
+    mTrayMgr->createLabel(OgreBites::TL_CENTER, "GameOver", text, 300);
+}
+
+void GameApp::restartGame()
+{
+    mGameState = GameState();
+    if (mTrayMgr->getWidget("PauseLabel"))
+        mTrayMgr->destroyWidget("PauseLabel");
+    if (mTrayMgr->getWidget("GameOver"))
+        mTrayMgr->destroyWidget("GameOver");
+    updateHUD();
 }
