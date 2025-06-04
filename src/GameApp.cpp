@@ -102,6 +102,7 @@ Enemy::Enemy(Ogre::SceneManager* sceneMgr, btDiscreteDynamicsWorld* world,
     btRigidBody::btRigidBodyConstructionInfo info(mass, motion, shape, inertia);
     mBody = new btRigidBody(info);
     mBody->setAngularFactor(0);
+    mBody->setUserPointer(this);
     world->addRigidBody(mBody);
 }
 
@@ -163,6 +164,7 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mSceneMgr(nullptr),
                      mTrayMgr(nullptr),
                      mOverlaySystem(nullptr),
+                     mInputHandler(nullptr),
                      mWeapon(nullptr),
                      mWeaponLabel(nullptr)
 
@@ -185,30 +187,12 @@ GameApp::~GameApp()
     delete mWeaponLabel;
     mWeaponLabel = nullptr;
 
+    delete mWeapon;
+    mWeapon = nullptr;
+
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
-
-    for (auto proj : mProjectiles)
-    {
-        mDynamicsWorld->removeRigidBody(proj->body);
-        delete proj->body->getMotionState();
-        delete proj->body;
-        mSceneMgr->destroySceneNode(proj->node);
-        delete proj;
-    }
-    mProjectiles.clear();
-
-    for (auto tgt : mTargets)
-    {
-        mDynamicsWorld->removeRigidBody(tgt->body);
-        delete tgt->body->getMotionState();
-        delete tgt->body;
-        mSceneMgr->destroySceneNode(tgt->node);
-        delete tgt;
-    }
-    mTargets.clear();
-
     delete mDynamicsWorld;
     mDynamicsWorld = nullptr;
     delete mSolver;
@@ -354,24 +338,36 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
     {
         BulletProjectile* proj = *it;
         proj->life -= evt.timeSinceLastFrame;
+
         btTransform trans;
         proj->body->getMotionState()->getWorldTransform(trans);
         Ogre::Vector3 pos(trans.getOrigin().x(), trans.getOrigin().y(), trans.getOrigin().z());
         proj->node->setPosition(pos);
 
-        bool remove = proj->life <= 0.0f;
-        for (auto enemy : mEnemies)
+        struct BulletCallback : public btCollisionWorld::ContactResultCallback
         {
-            btTransform et;
-            enemy->getBody()->getMotionState()->getWorldTransform(et);
-            Ogre::Vector3 epos(et.getOrigin().x(), et.getOrigin().y(), et.getOrigin().z());
-            if (pos.distance(epos) < 1.0f)
+            BulletProjectile* p;
+            GameApp* app;
+            BulletCallback(BulletProjectile* bp, GameApp* a) : p(bp), app(a) {}
+            btScalar addSingleResult(btManifoldPoint&,
+                                     const btCollisionObjectWrapper* col0,int,int,
+                                     const btCollisionObjectWrapper* col1,int,int) override
             {
-                enemy->takeDamage(1);
-                remove = true;
-                break;
+                const btCollisionObject* other =
+                    col0->getCollisionObject() == p->body ? col1->getCollisionObject()
+                                                         : col0->getCollisionObject();
+                Enemy* enemy = static_cast<Enemy*>(other->getUserPointer());
+                if (enemy)
+                    enemy->takeDamage(p->damage);
+                p->remove = true;
+                return 0;
             }
-        }
+        };
+
+        BulletCallback cb(proj, this);
+        mDynamicsWorld->contactTest(proj->body, cb);
+
+        bool remove = proj->life <= 0.0f || proj->remove;
         if (remove)
         {
             mDynamicsWorld->removeRigidBody(proj->body);
@@ -429,16 +425,14 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
 
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
-    Projectile* proj = new Projectile();
-    proj->node = node;
-    proj->body = body;
-    proj->damage = 10;
-    mDynamicsWorld->addRigidBody(body);
 
     BulletProjectile* proj = new BulletProjectile();
     proj->node = node;
     proj->body = body;
     proj->life = 3.0f; // seconds
+    proj->damage = 10;
+    body->setUserPointer(proj);
+    mDynamicsWorld->addRigidBody(body);
     mBullets.push_back(proj);
 }
 
