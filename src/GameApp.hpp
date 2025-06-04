@@ -23,6 +23,8 @@ struct BulletProjectile
     Ogre::SceneNode* node;
     btRigidBody* body;
     float life;
+    int damage;
+    bool remove{false};
 };
 
 class Enemy
@@ -124,7 +126,9 @@ private:
     Ogre::OverlaySystem* mOverlaySystem;
     InputHandler* mInputHandler;
 
-    Player* mPlayer;
+    Weapon* mWeapon;
+    OgreBites::Label* mWeaponLabel;
+
 
     std::vector<BulletProjectile*> mBullets;
     std::vector<Enemy*> mEnemies;

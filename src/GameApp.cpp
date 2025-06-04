@@ -110,6 +110,7 @@ Enemy::Enemy(Ogre::SceneManager* sceneMgr, btDiscreteDynamicsWorld* world,
     btRigidBody::btRigidBodyConstructionInfo info(mass, motion, shape, inertia);
     mBody = new btRigidBody(info);
     mBody->setAngularFactor(0);
+    mBody->setUserPointer(this);
     world->addRigidBody(mBody);
 }
 
@@ -199,11 +200,12 @@ GameApp::~GameApp()
     delete mWeapon;
     mWeapon = nullptr;
 
+    delete mWeapon;
+    mWeapon = nullptr;
+
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
-
-
     delete mDynamicsWorld;
     mDynamicsWorld = nullptr;
     delete mSolver;
@@ -360,24 +362,36 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
     {
         BulletProjectile* proj = *it;
         proj->life -= evt.timeSinceLastFrame;
+
         btTransform trans;
         proj->body->getMotionState()->getWorldTransform(trans);
         Ogre::Vector3 pos(trans.getOrigin().x(), trans.getOrigin().y(), trans.getOrigin().z());
         proj->node->setPosition(pos);
 
-        bool remove = proj->life <= 0.0f;
-        for (auto enemy : mEnemies)
+        struct BulletCallback : public btCollisionWorld::ContactResultCallback
         {
-            btTransform et;
-            enemy->getBody()->getMotionState()->getWorldTransform(et);
-            Ogre::Vector3 epos(et.getOrigin().x(), et.getOrigin().y(), et.getOrigin().z());
-            if (pos.distance(epos) < 1.0f)
+            BulletProjectile* p;
+            GameApp* app;
+            BulletCallback(BulletProjectile* bp, GameApp* a) : p(bp), app(a) {}
+            btScalar addSingleResult(btManifoldPoint&,
+                                     const btCollisionObjectWrapper* col0,int,int,
+                                     const btCollisionObjectWrapper* col1,int,int) override
             {
-                enemy->takeDamage(1);
-                remove = true;
-                break;
+                const btCollisionObject* other =
+                    col0->getCollisionObject() == p->body ? col1->getCollisionObject()
+                                                         : col0->getCollisionObject();
+                Enemy* enemy = static_cast<Enemy*>(other->getUserPointer());
+                if (enemy)
+                    enemy->takeDamage(p->damage);
+                p->remove = true;
+                return 0;
             }
-        }
+        };
+
+        BulletCallback cb(proj, this);
+        mDynamicsWorld->contactTest(proj->body, cb);
+
+        bool remove = proj->life <= 0.0f || proj->remove;
         if (remove)
         {
             mDynamicsWorld->removeRigidBody(proj->body);
@@ -438,59 +452,14 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
 
-    Projectile* basicProj = new Projectile();
-    basicProj->node = node;
-    basicProj->body = body;
-    basicProj->damage = 10;
-
+    BulletProjectile* proj = new BulletProjectile();
+    proj->node = node;
+    proj->body = body;
+    proj->life = 3.0f; // seconds
+    proj->damage = 10;
+    body->setUserPointer(proj);
     mDynamicsWorld->addRigidBody(body);
-
-    BulletProjectile* bulletProj = new BulletProjectile();
-    bulletProj->node = node;
-    bulletProj->body = body;
-    bulletProj->life = 3.0f; // seconds
-    mBullets.push_back(bulletProj);
-}
-
-void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
-{
-    Ogre::Entity* ent = mSceneMgr->createEntity(Ogre::SceneManager::PT_CUBE);
-    Ogre::SceneNode* node = mSceneMgr->getRootSceneNode()->createChildSceneNode(position);
-    node->setScale(scale);
-    node->attachObject(ent);
-
-    btCollisionShape* shape = new btBoxShape(btVector3(scale.x, scale.y, scale.z));
-    mCollisionShapes.push_back(shape);
-    btTransform t;
-    t.setIdentity();
-    t.setOrigin(btVector3(position.x, position.y, position.z));
-    btDefaultMotionState* motion = new btDefaultMotionState(t);
-    btRigidBody::btRigidBodyConstructionInfo info(0.0f, motion, shape);
-    btRigidBody* body = new btRigidBody(info);
-    mDynamicsWorld->addRigidBody(body);
-}
-
-void GameApp::loadLevel(const std::string& filename)
-{
-    std::ifstream file(filename);
-    if (!file.is_open())
-        return;
-
-    std::string line;
-    while (std::getline(file, line))
-    {
-        if (line.empty() || line[0] == '#')
-            continue;
-
-        std::istringstream iss(line);
-        std::string type;
-        float x, y, z, sx, sy, sz;
-        if (!(iss >> type >> x >> y >> z >> sx >> sy >> sz))
-            continue;
-
-        if (type == "wall" || type == "obstacle")
-            addStaticCube(Ogre::Vector3(x, y, z), Ogre::Vector3(sx, sy, sz));
-    }
+    mBullets.push_back(proj);
 }
 
 void GameApp::spawnEnemy(const Ogre::Vector3& position)
