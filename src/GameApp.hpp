@@ -10,8 +10,25 @@
 #include <OgreTrays.h>
 
 #include <btBulletDynamicsCommon.h>
+#include <vector>
+
+#include "Weapon.hpp"
 
 class GameApp;
+
+struct Projectile
+{
+    Ogre::SceneNode* node;
+    btRigidBody* body;
+    int damage;
+};
+
+struct Target
+{
+    Ogre::SceneNode* node;
+    btRigidBody* body;
+    int health;
+};
 
 class InputHandler : public OgreBites::InputListener
 {
@@ -44,6 +61,7 @@ public:
 
 private:
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
+    void checkProjectiles();
 
     btDiscreteDynamicsWorld* mDynamicsWorld;
     btBroadphaseInterface* mBroadphase;
@@ -55,6 +73,12 @@ private:
     Ogre::SceneManager* mSceneMgr;
     OgreBites::TrayManager* mTrayMgr;
     Ogre::OverlaySystem* mOverlaySystem;
+
+    std::vector<Projectile*> mProjectiles;
+    std::vector<Target*> mTargets;
+
+    Weapon* mWeapon;
+    OgreBites::Label* mWeaponLabel;
 };
 
 #endif // GAME_APP_HPP
