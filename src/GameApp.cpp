@@ -4,6 +4,7 @@
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
 #include <OgreVector3.h>
+#include <fstream>
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -68,7 +69,8 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mCameraNode(nullptr),
                      mSceneMgr(nullptr),
                      mTrayMgr(nullptr),
-                     mOverlaySystem(nullptr)
+                     mOverlaySystem(nullptr),
+                     mInputHandler(nullptr)
 {
 }
 
@@ -84,6 +86,9 @@ GameApp::~GameApp()
         mSceneMgr->removeRenderQueueListener(mOverlaySystem);
     delete mOverlaySystem;
     mOverlaySystem = nullptr;
+
+    delete mInputHandler;
+    mInputHandler = nullptr;
 
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
@@ -157,6 +162,8 @@ void GameApp::setup()
     btRigidBody::btRigidBodyConstructionInfo groundInfo(0.0f, groundMotion, groundShape);
     btRigidBody* groundBody = new btRigidBody(groundInfo);
     mDynamicsWorld->addRigidBody(groundBody);
+
+    loadLevel("level.txt");
 }
 
 bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
@@ -210,4 +217,40 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
     mDynamicsWorld->addRigidBody(body);
+}
+
+void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
+{
+    Ogre::Entity* cube = mSceneMgr->createEntity("Cube.mesh");
+    Ogre::SceneNode* node = mSceneMgr->getRootSceneNode()->createChildSceneNode(position);
+    node->setScale(scale);
+    node->attachObject(cube);
+
+    btVector3 halfExtents(scale.x * 50.0f, scale.y * 50.0f, scale.z * 50.0f);
+    btCollisionShape* box = new btBoxShape(halfExtents);
+    mCollisionShapes.push_back(box);
+    btTransform tr;
+    tr.setIdentity();
+    tr.setOrigin(btVector3(position.x, position.y, position.z));
+    btDefaultMotionState* motion = new btDefaultMotionState(tr);
+    btRigidBody::btRigidBodyConstructionInfo info(0.0f, motion, box);
+    btRigidBody* body = new btRigidBody(info);
+    mDynamicsWorld->addRigidBody(body);
+}
+
+void GameApp::loadLevel(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file.is_open())
+        return;
+
+    std::string type;
+    float x, y, z, sx, sy, sz;
+    while (file >> type >> x >> y >> z >> sx >> sy >> sz)
+    {
+        Ogre::Vector3 pos(x, y, z);
+        Ogre::Vector3 scale(sx, sy, sz);
+        if (type == "wall" || type == "obstacle" || type == "item")
+            addStaticCube(pos, scale);
+    }
 }
