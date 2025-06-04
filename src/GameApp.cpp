@@ -61,11 +61,44 @@ void InputHandler::update(float dt)
 
 GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mDynamicsWorld(nullptr),
+                     mBroadphase(nullptr),
+                     mDispatcher(nullptr),
+                     mSolver(nullptr),
+                     mCollisionConfig(nullptr),
                      mCameraNode(nullptr),
                      mSceneMgr(nullptr),
                      mTrayMgr(nullptr),
-                     mInputHandler(nullptr)
+                     mOverlaySystem(nullptr)
 {
+}
+
+GameApp::~GameApp()
+{
+    if (mTrayMgr)
+    {
+        delete mTrayMgr;
+        mTrayMgr = nullptr;
+    }
+
+    if (mSceneMgr && mOverlaySystem)
+        mSceneMgr->removeRenderQueueListener(mOverlaySystem);
+    delete mOverlaySystem;
+    mOverlaySystem = nullptr;
+
+    for (int i = 0; i < mCollisionShapes.size(); ++i)
+        delete mCollisionShapes[i];
+    mCollisionShapes.clear();
+
+    delete mDynamicsWorld;
+    mDynamicsWorld = nullptr;
+    delete mSolver;
+    mSolver = nullptr;
+    delete mBroadphase;
+    mBroadphase = nullptr;
+    delete mDispatcher;
+    mDispatcher = nullptr;
+    delete mCollisionConfig;
+    mCollisionConfig = nullptr;
 }
 
 void GameApp::setup()
@@ -74,9 +107,9 @@ void GameApp::setup()
     addInputListener(this);
 
     // Overlay system for 2D elements
-    Ogre::OverlaySystem* overlaySystem = new Ogre::OverlaySystem();
+    mOverlaySystem = new Ogre::OverlaySystem();
     mSceneMgr = getRoot()->createSceneManager();
-    mSceneMgr->addRenderQueueListener(overlaySystem);
+    mSceneMgr->addRenderQueueListener(mOverlaySystem);
 
     // tray manager for 80s style controls
     mTrayMgr = new OgreBites::TrayManager("HUD", getRenderWindow());
@@ -110,11 +143,11 @@ void GameApp::setup()
     mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(groundEntity);
 
     // Bullet physics setup
-    btDefaultCollisionConfiguration* collisionConfig = new btDefaultCollisionConfiguration();
-    btCollisionDispatcher* dispatcher = new btCollisionDispatcher(collisionConfig);
-    btBroadphaseInterface* broadphase = new btDbvtBroadphase();
-    btSequentialImpulseConstraintSolver* solver = new btSequentialImpulseConstraintSolver();
-    mDynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, broadphase, solver, collisionConfig);
+    mCollisionConfig = new btDefaultCollisionConfiguration();
+    mDispatcher = new btCollisionDispatcher(mCollisionConfig);
+    mBroadphase = new btDbvtBroadphase();
+    mSolver = new btSequentialImpulseConstraintSolver();
+    mDynamicsWorld = new btDiscreteDynamicsWorld(mDispatcher, mBroadphase, mSolver, mCollisionConfig);
     mDynamicsWorld->setGravity(btVector3(0, -9.81f, 0));
 
     // ground plane in Bullet
