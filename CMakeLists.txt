@@ -7,6 +7,7 @@ find_package(Bullet REQUIRED)
 add_executable(ArcadeFPS
     src/main.cpp
     src/GameApp.cpp
+    src/Player.cpp
     src/Weapon.cpp
 )
 

@@ -39,8 +39,8 @@ bool InputHandler::keyReleased(const OgreBites::KeyboardEvent& evt)
 bool InputHandler::mouseMoved(const OgreBites::MouseMotionEvent& evt)
 {
     const float sensitivity = 0.1f;
-    mApp->mCameraNode->yaw(Ogre::Degree(-evt.xrel * sensitivity), Ogre::Node::TS_WORLD);
-    mApp->mCameraNode->pitch(Ogre::Degree(-evt.yrel * sensitivity));
+    mApp->getPlayer()->getNode()->yaw(Ogre::Degree(-evt.xrel * sensitivity), Ogre::Node::TS_WORLD);
+    mApp->getCameraNode()->pitch(Ogre::Degree(-evt.yrel * sensitivity));
     return true;
 }
 
@@ -63,14 +63,18 @@ bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 
 void InputHandler::update(float dt)
 {
+    const float force = 10.0f;
+    Ogre::Vector3 worldDir = mApp->getPlayer()->getNode()->getOrientation() * mDirection;
+    mApp->getPlayer()->applyMovement(worldDir, force);
     if (mApp->mGameState.paused || mApp->mGameState.gameOver)
         return;
     const float speed = 5.0f;
     Ogre::Vector3 disp = mDirection * speed * dt;
     mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
+  
     if (mJump)
     {
-        mApp->mCameraNode->translate(0, 3.0f * dt, 0, Ogre::Node::TS_WORLD);
+        mApp->getPlayer()->jump(4.0f);
         mJump = false;
     }
     if (mApp->mWeapon)
@@ -163,9 +167,8 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mSceneMgr(nullptr),
                      mTrayMgr(nullptr),
                      mOverlaySystem(nullptr),
-                     mWeapon(nullptr),
-                     mWeaponLabel(nullptr)
-
+                     mInputHandler(nullptr),
+                     mPlayer(nullptr)
 {
 }
 
@@ -220,6 +223,9 @@ GameApp::~GameApp()
     delete mCollisionConfig;
     mCollisionConfig = nullptr;
 
+
+    delete mPlayer;
+    mPlayer = nullptr;
     for (auto bullet : mBullets)
     {
         mDynamicsWorld->removeRigidBody(bullet->body);
@@ -266,11 +272,22 @@ void GameApp::setup()
     mHealthBar->setProgress(1.0f);
     mScoreLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Score", "Score: 0", 120);
 
+    // Bullet physics setup
+    mCollisionConfig = new btDefaultCollisionConfiguration();
+    mDispatcher = new btCollisionDispatcher(mCollisionConfig);
+    mBroadphase = new btDbvtBroadphase();
+    mSolver = new btSequentialImpulseConstraintSolver();
+    mDynamicsWorld = new btDiscreteDynamicsWorld(mDispatcher, mBroadphase, mSolver, mCollisionConfig);
+    mDynamicsWorld->setGravity(btVector3(0, -9.81f, 0));
+
+    // create player
+    mPlayer = new Player(mSceneMgr, mDynamicsWorld, mCollisionShapes);
+
     // camera
     Ogre::Camera* cam = mSceneMgr->createCamera("MainCam");
     cam->setNearClipDistance(0.1f);
     cam->setAutoAspectRatio(true);
-    mCameraNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
+    mCameraNode = mPlayer->getNode()->createChildSceneNode(Ogre::Vector3(0, 0.5f, 0));
     mCameraNode->attachObject(cam);
     getRenderWindow()->addViewport(cam);
 
@@ -291,14 +308,6 @@ void GameApp::setup()
     Ogre::Entity* groundEntity = mSceneMgr->createEntity("ground");
     groundEntity->setCastShadows(false);
     mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(groundEntity);
-
-    // Bullet physics setup
-    mCollisionConfig = new btDefaultCollisionConfiguration();
-    mDispatcher = new btCollisionDispatcher(mCollisionConfig);
-    mBroadphase = new btDbvtBroadphase();
-    mSolver = new btSequentialImpulseConstraintSolver();
-    mDynamicsWorld = new btDiscreteDynamicsWorld(mDispatcher, mBroadphase, mSolver, mCollisionConfig);
-    mDynamicsWorld->setGravity(btVector3(0, -9.81f, 0));
 
     // ground plane in Bullet
     btCollisionShape* groundShape = new btStaticPlaneShape(btVector3(0,1,0), 0);
@@ -342,6 +351,8 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
 {
     if (mDynamicsWorld)
         mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
+    if (mPlayer)
+        mPlayer->update();
     if (mInputHandler)
         mInputHandler->update(evt.timeSinceLastFrame);
 
