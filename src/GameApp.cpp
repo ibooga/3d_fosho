@@ -4,8 +4,12 @@
 #include <OgreEntity.h>
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
-#include <OgreVector3.h>8
+#include <OgreVector3.h>
 #include <OgreSceneNode.h>
+#include <OgreStringConverter.h>
+#include <fstream>
+#include <sstream>
+
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -39,8 +43,8 @@ bool InputHandler::keyReleased(const OgreBites::KeyboardEvent& evt)
 bool InputHandler::mouseMoved(const OgreBites::MouseMotionEvent& evt)
 {
     const float sensitivity = 0.1f;
-    mApp->mCameraNode->yaw(Ogre::Degree(-evt.xrel * sensitivity), Ogre::Node::TS_WORLD);
-    mApp->mCameraNode->pitch(Ogre::Degree(-evt.yrel * sensitivity));
+    mApp->getPlayer()->getNode()->yaw(Ogre::Degree(-evt.xrel * sensitivity), Ogre::Node::TS_WORLD);
+    mApp->getCameraNode()->pitch(Ogre::Degree(-evt.yrel * sensitivity));
     return true;
 }
 
@@ -63,14 +67,18 @@ bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 
 void InputHandler::update(float dt)
 {
+    const float force = 10.0f;
+    Ogre::Vector3 worldDir = mApp->getPlayer()->getNode()->getOrientation() * mDirection;
+    mApp->getPlayer()->applyMovement(worldDir, force);
     if (mApp->mGameState.paused || mApp->mGameState.gameOver)
         return;
     const float speed = 5.0f;
     Ogre::Vector3 disp = mDirection * speed * dt;
     mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
+  
     if (mJump)
     {
-        mApp->mCameraNode->translate(0, 3.0f * dt, 0, Ogre::Node::TS_WORLD);
+        mApp->getPlayer()->jump(4.0f);
         mJump = false;
     }
     if (mApp->mWeapon)
@@ -165,9 +173,12 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mTrayMgr(nullptr),
                      mOverlaySystem(nullptr),
                      mInputHandler(nullptr),
+                     mPlayer(nullptr),
                      mWeapon(nullptr),
-                     mWeaponLabel(nullptr)
-
+                     mWeaponLabel(nullptr),
+                     mCrosshair(nullptr),
+                     mHealthBar(nullptr),
+                     mScoreLabel(nullptr)
 {
 }
 
@@ -186,6 +197,8 @@ GameApp::~GameApp()
 
     delete mWeaponLabel;
     mWeaponLabel = nullptr;
+    delete mWeapon;
+    mWeapon = nullptr;
 
     delete mWeapon;
     mWeapon = nullptr;
@@ -204,6 +217,9 @@ GameApp::~GameApp()
     delete mCollisionConfig;
     mCollisionConfig = nullptr;
 
+
+    delete mPlayer;
+    mPlayer = nullptr;
     for (auto bullet : mBullets)
     {
         mDynamicsWorld->removeRigidBody(bullet->body);
@@ -250,11 +266,22 @@ void GameApp::setup()
     mHealthBar->setProgress(1.0f);
     mScoreLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Score", "Score: 0", 120);
 
+    // Bullet physics setup
+    mCollisionConfig = new btDefaultCollisionConfiguration();
+    mDispatcher = new btCollisionDispatcher(mCollisionConfig);
+    mBroadphase = new btDbvtBroadphase();
+    mSolver = new btSequentialImpulseConstraintSolver();
+    mDynamicsWorld = new btDiscreteDynamicsWorld(mDispatcher, mBroadphase, mSolver, mCollisionConfig);
+    mDynamicsWorld->setGravity(btVector3(0, -9.81f, 0));
+
+    // create player
+    mPlayer = new Player(mSceneMgr, mDynamicsWorld, mCollisionShapes);
+
     // camera
     Ogre::Camera* cam = mSceneMgr->createCamera("MainCam");
     cam->setNearClipDistance(0.1f);
     cam->setAutoAspectRatio(true);
-    mCameraNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
+    mCameraNode = mPlayer->getNode()->createChildSceneNode(Ogre::Vector3(0, 0.5f, 0));
     mCameraNode->attachObject(cam);
     getRenderWindow()->addViewport(cam);
 
@@ -263,6 +290,7 @@ void GameApp::setup()
 
     mWeapon = new Pistol(this);
     mWeaponLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Weapon", mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()), 150);
+    updateHUD();
 
     // lighting
     mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5f, 0.5f, 0.5f));
@@ -276,14 +304,6 @@ void GameApp::setup()
     groundEntity->setCastShadows(false);
     mSceneMgr->getRootSceneNode()->createChildSceneNode()->attachObject(groundEntity);
 
-    // Bullet physics setup
-    mCollisionConfig = new btDefaultCollisionConfiguration();
-    mDispatcher = new btCollisionDispatcher(mCollisionConfig);
-    mBroadphase = new btDbvtBroadphase();
-    mSolver = new btSequentialImpulseConstraintSolver();
-    mDynamicsWorld = new btDiscreteDynamicsWorld(mDispatcher, mBroadphase, mSolver, mCollisionConfig);
-    mDynamicsWorld->setGravity(btVector3(0, -9.81f, 0));
-
     // ground plane in Bullet
     btCollisionShape* groundShape = new btStaticPlaneShape(btVector3(0,1,0), 0);
     mCollisionShapes.push_back(groundShape);
@@ -291,6 +311,8 @@ void GameApp::setup()
     btRigidBody::btRigidBodyConstructionInfo groundInfo(0.0f, groundMotion, groundShape);
     btRigidBody* groundBody = new btRigidBody(groundInfo);
     mDynamicsWorld->addRigidBody(groundBody);
+
+    loadLevel("level.txt");
 
     spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
     spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
@@ -326,6 +348,8 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
 {
     if (mDynamicsWorld)
         mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
+    if (mPlayer)
+        mPlayer->update();
     if (mInputHandler)
         mInputHandler->update(evt.timeSinceLastFrame);
 
@@ -401,6 +425,8 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
             ++it;
         }
     }
+
+    updateHUD();
     return true;
 }
 
@@ -441,4 +467,14 @@ void GameApp::spawnEnemy(const Ogre::Vector3& position)
     Enemy* e = new Enemy(mSceneMgr, mDynamicsWorld, mCollisionShapes, position);
     mEnemies.push_back(e);
 
+}
+
+void GameApp::updateHUD()
+{
+    if (mHealthBar)
+        mHealthBar->setProgress(static_cast<Ogre::Real>(mGameState.health) / 100.0f);
+    if (mScoreLabel)
+        mScoreLabel->setCaption("Score: " + Ogre::StringConverter::toString(mGameState.score));
+    if (mWeaponLabel && mWeapon)
+        mWeaponLabel->setCaption(mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()));
 }

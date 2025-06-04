@@ -10,8 +10,8 @@
 #include <OgreTrays.h>
 
 #include <btBulletDynamicsCommon.h>
-#include <vector>
 
+#include "Player.hpp"
 #include "Weapon.hpp"
 
 #include <vector>
@@ -98,6 +98,8 @@ public:
     bool mousePressed(const OgreBites::MouseButtonEvent& evt) override;
     bool frameRenderingQueued(const Ogre::FrameEvent& evt) override;
 
+    Ogre::SceneNode* getCameraNode() const { return mCameraNode; }
+    Player* getPlayer() const { return mPlayer; }
     void restartGame();
 
 private:
@@ -127,8 +129,18 @@ private:
     Weapon* mWeapon;
     OgreBites::Label* mWeaponLabel;
 
+
     std::vector<BulletProjectile*> mBullets;
     std::vector<Enemy*> mEnemies;
+
+    GameState mGameState;
+
+    OgreBites::Label* mCrosshair{nullptr};
+    OgreBites::ProgressBar* mHealthBar{nullptr};
+    OgreBites::Label* mScoreLabel{nullptr};
+    OgreBites::Label* mWeaponLabel{nullptr};
+    Weapon* mWeapon{nullptr};
+
 
 };
 
