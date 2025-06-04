@@ -6,7 +6,10 @@
 #include <OgreRoot.h>
 #include <OgreVector3.h>
 #include <OgreSceneNode.h>
+#include <OgreStringConverter.h>
 #include <fstream>
+#include <sstream>
+
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -169,7 +172,12 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mTrayMgr(nullptr),
                      mOverlaySystem(nullptr),
                      mInputHandler(nullptr),
-                     mPlayer(nullptr)
+                     mPlayer(nullptr),
+                     mWeapon(nullptr),
+                     mWeaponLabel(nullptr),
+                     mCrosshair(nullptr),
+                     mHealthBar(nullptr),
+                     mScoreLabel(nullptr)
 {
 }
 
@@ -280,6 +288,7 @@ void GameApp::setup()
 
     mWeapon = new Pistol(this);
     mWeaponLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Weapon", mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()), 150);
+    updateHUD();
 
     // lighting
     mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5f, 0.5f, 0.5f));
@@ -300,6 +309,8 @@ void GameApp::setup()
     btRigidBody::btRigidBodyConstructionInfo groundInfo(0.0f, groundMotion, groundShape);
     btRigidBody* groundBody = new btRigidBody(groundInfo);
     mDynamicsWorld->addRigidBody(groundBody);
+
+    loadLevel("level.txt");
 
     spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
     spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
@@ -400,6 +411,8 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
             ++it;
         }
     }
+
+    updateHUD();
     return true;
 }
 
@@ -439,13 +452,6 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
     mBullets.push_back(bulletProj);
 }
 
-void GameApp::spawnEnemy(const Ogre::Vector3& position)
-{
-    Enemy* e = new Enemy(mSceneMgr, mDynamicsWorld, mCollisionShapes, position);
-    mEnemies.push_back(e);
-
-}
-
 void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
 {
     Ogre::Entity* ent = mSceneMgr->createEntity(Ogre::SceneManager::PT_CUBE);
@@ -467,95 +473,39 @@ void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& 
 void GameApp::loadLevel(const std::string& filename)
 {
     std::ifstream file(filename);
-    if (!file)
+    if (!file.is_open())
         return;
 
-    std::string type;
-    float x, y, z, sx, sy, sz;
-    while (file >> type >> x >> y >> z >> sx >> sy >> sz)
+    std::string line;
+    while (std::getline(file, line))
     {
-        addStaticCube({x, y, z}, {sx, sy, sz});
+        if (line.empty() || line[0] == '#')
+            continue;
+
+        std::istringstream iss(line);
+        std::string type;
+        float x, y, z, sx, sy, sz;
+        if (!(iss >> type >> x >> y >> z >> sx >> sy >> sz))
+            continue;
+
+        if (type == "wall" || type == "obstacle")
+            addStaticCube(Ogre::Vector3(x, y, z), Ogre::Vector3(sx, sy, sz));
     }
 }
 
-void GameApp::checkProjectiles()
+void GameApp::spawnEnemy(const Ogre::Vector3& position)
 {
-    // projectiles are handled in frameRenderingQueued
-}
+    Enemy* e = new Enemy(mSceneMgr, mDynamicsWorld, mCollisionShapes, position);
+    mEnemies.push_back(e);
 
-void GameApp::togglePause()
-{
-    mGameState.paused = !mGameState.paused;
-    if (mGameState.paused)
-        mTrayMgr->showCursor();
-    else
-        mTrayMgr->hideCursor();
 }
 
 void GameApp::updateHUD()
 {
     if (mHealthBar)
-        mHealthBar->setProgress(static_cast<float>(mGameState.health) / 100.0f);
+        mHealthBar->setProgress(static_cast<Ogre::Real>(mGameState.health) / 100.0f);
     if (mScoreLabel)
-        mScoreLabel->setCaption("Score: " + std::to_string(mGameState.score));
+        mScoreLabel->setCaption("Score: " + Ogre::StringConverter::toString(mGameState.score));
     if (mWeaponLabel && mWeapon)
         mWeaponLabel->setCaption(mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()));
-}
-
-void GameApp::setGameOver(bool won)
-{
-    mGameState.gameOver = true;
-    mGameState.won = won;
-    mGameState.paused = true;
-    mTrayMgr->showCursor();
-}
-
-void GameApp::restartGame()
-{
-    // clear bullets
-    for (auto bullet : mBullets)
-    {
-        mDynamicsWorld->removeRigidBody(bullet->body);
-        delete bullet->body->getMotionState();
-        delete bullet->body;
-        if (bullet->node)
-            bullet->node->getParentSceneNode()->removeAndDestroyChild(bullet->node);
-        delete bullet;
-    }
-    mBullets.clear();
-
-    // clear enemies
-    for (auto enemy : mEnemies)
-    {
-        mDynamicsWorld->removeRigidBody(enemy->getBody());
-        delete enemy->getBody()->getMotionState();
-        delete enemy->getBody();
-        delete enemy;
-    }
-    mEnemies.clear();
-
-    // respawn enemies
-    spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
-    spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
-    spawnEnemy(Ogre::Vector3(0, 0.5f, 5));
-
-    // reset player position
-    if (mPlayer)
-    {
-        btTransform t;
-        t.setIdentity();
-        t.setOrigin(btVector3(0, 1.0f, 0));
-        mPlayer->getBody()->setWorldTransform(t);
-        mPlayer->getBody()->setLinearVelocity(btVector3(0,0,0));
-        mPlayer->getBody()->setAngularVelocity(btVector3(0,0,0));
-    }
-
-    // reset weapon
-    if (mWeapon)
-        delete mWeapon;
-    mWeapon = new Pistol(this);
-
-    mGameState = GameState();
-    updateHUD();
-    mTrayMgr->hideCursor();
 }

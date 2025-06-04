@@ -130,11 +130,13 @@ private:
     std::vector<Enemy*> mEnemies;
 
     GameState mGameState;
-    Weapon* mWeapon{nullptr};
+
     OgreBites::Label* mCrosshair{nullptr};
     OgreBites::ProgressBar* mHealthBar{nullptr};
     OgreBites::Label* mScoreLabel{nullptr};
     OgreBites::Label* mWeaponLabel{nullptr};
+    Weapon* mWeapon{nullptr};
+
 
 };
 
