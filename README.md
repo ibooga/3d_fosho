@@ -29,3 +29,6 @@ appear with basic 3D graphics. Movement is controlled with **WASD**, jumping is
 This project is intended as a starting point for experimenting with OGRE Next
 and Bullet. It displays 1980s inspired on-screen instructions and fires small
 spheres as bullets using Bullet's physics simulation.
+
+## License
+Released under the MIT License. See [LICENSE](LICENSE) for details.
