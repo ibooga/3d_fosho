@@ -1,9 +1,10 @@
 #include "GameApp.hpp"
+#include "Weapon.hpp"
 
 #include <OgreEntity.h>
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
-#include <OgreVector3.h>
+#include <OgreVector3.h>8
 #include <OgreSceneNode.h>
 
 InputHandler::InputHandler(GameApp* app)
@@ -45,11 +46,25 @@ bool InputHandler::mouseMoved(const OgreBites::MouseMotionEvent& evt)
 
 bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
+    if (evt.button == OgreBites::BUTTON_LEFT)
+    {
+        Ogre::Vector3 pos = mApp->mCameraNode->getPosition();
+        Ogre::Quaternion orient = mApp->mCameraNode->getOrientation();
+        if (mApp->mWeapon)
+            mApp->mWeapon->fire(pos + orient * Ogre::Vector3(0,0,-1), orient);
+        if (mApp->mWeaponLabel)
+        {
+            mApp->mWeaponLabel->setCaption(mApp->mWeapon->getName() + " - " +
+                                           std::to_string(mApp->mWeapon->getAmmo()));
+        }
+    }
     return true;
 }
 
 void InputHandler::update(float dt)
 {
+    if (mApp->mGameState.paused || mApp->mGameState.gameOver)
+        return;
     const float speed = 5.0f;
     Ogre::Vector3 disp = mDirection * speed * dt;
     mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
@@ -58,6 +73,8 @@ void InputHandler::update(float dt)
         mApp->mCameraNode->translate(0, 3.0f * dt, 0, Ogre::Node::TS_WORLD);
         mJump = false;
     }
+    if (mApp->mWeapon)
+        mApp->mWeapon->update(dt);
 }
 
 // ---------------------------------------------------------------------
@@ -145,7 +162,10 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mCameraNode(nullptr),
                      mSceneMgr(nullptr),
                      mTrayMgr(nullptr),
-                     mOverlaySystem(nullptr)
+                     mOverlaySystem(nullptr),
+                     mWeapon(nullptr),
+                     mWeaponLabel(nullptr)
+
 {
 }
 
@@ -162,9 +182,32 @@ GameApp::~GameApp()
     delete mOverlaySystem;
     mOverlaySystem = nullptr;
 
+    delete mWeaponLabel;
+    mWeaponLabel = nullptr;
+
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
+
+    for (auto proj : mProjectiles)
+    {
+        mDynamicsWorld->removeRigidBody(proj->body);
+        delete proj->body->getMotionState();
+        delete proj->body;
+        mSceneMgr->destroySceneNode(proj->node);
+        delete proj;
+    }
+    mProjectiles.clear();
+
+    for (auto tgt : mTargets)
+    {
+        mDynamicsWorld->removeRigidBody(tgt->body);
+        delete tgt->body->getMotionState();
+        delete tgt->body;
+        mSceneMgr->destroySceneNode(tgt->node);
+        delete tgt;
+    }
+    mTargets.clear();
 
     delete mDynamicsWorld;
     mDynamicsWorld = nullptr;
@@ -218,6 +261,10 @@ void GameApp::setup()
     addInputListener(mTrayMgr);
 
     mTrayMgr->createLabel(OgreBites::TL_TOP, "Controls", "INSERT COIN - WASD to Move, SPACE to Jump, LMB to Shoot", 400);
+    mCrosshair = mTrayMgr->createLabel(OgreBites::TL_CENTER, "Crosshair", "+", 50);
+    mHealthBar = mTrayMgr->createProgressBar(OgreBites::TL_BOTTOM, "Health", 200, 20);
+    mHealthBar->setProgress(1.0f);
+    mScoreLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Score", "Score: 0", 120);
 
     // camera
     Ogre::Camera* cam = mSceneMgr->createCamera("MainCam");
@@ -229,6 +276,9 @@ void GameApp::setup()
 
     mInputHandler = new InputHandler(this);
     addInputListener(mInputHandler);
+
+    mWeapon = new Pistol(this);
+    mWeaponLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Weapon", mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()), 150);
 
     // lighting
     mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5f, 0.5f, 0.5f));
@@ -258,7 +308,6 @@ void GameApp::setup()
     btRigidBody* groundBody = new btRigidBody(groundInfo);
     mDynamicsWorld->addRigidBody(groundBody);
 
-    // spawn a few enemies
     spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
     spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
     spawnEnemy(Ogre::Vector3(0, 0.5f, 5));
@@ -270,17 +319,22 @@ bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
     {
         getRoot()->queueEndRendering();
     }
+    else if (evt.keysym.sym == OgreBites::SDLK_p)
+    {
+        if (!mGameState.gameOver)
+            togglePause();
+    }
+    else if (evt.keysym.sym == OgreBites::SDLK_r)
+    {
+        if (mGameState.gameOver)
+            restartGame();
+    }
     return true;
 }
 
 bool GameApp::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
-    if (evt.button == OgreBites::BUTTON_LEFT)
-    {
-        Ogre::Vector3 pos = mCameraNode->getPosition();
-        Ogre::Quaternion orient = mCameraNode->getOrientation();
-        createBullet(pos + orient * Ogre::Vector3(0,0,-1), orient);
-    }
+
     return true;
 }
 
@@ -375,6 +429,10 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
 
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
+    Projectile* proj = new Projectile();
+    proj->node = node;
+    proj->body = body;
+    proj->damage = 10;
     mDynamicsWorld->addRigidBody(body);
 
     BulletProjectile* proj = new BulletProjectile();
@@ -388,4 +446,5 @@ void GameApp::spawnEnemy(const Ogre::Vector3& position)
 {
     Enemy* e = new Enemy(mSceneMgr, mDynamicsWorld, mCollisionShapes, position);
     mEnemies.push_back(e);
+
 }

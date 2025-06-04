@@ -10,6 +10,9 @@
 #include <OgreTrays.h>
 
 #include <btBulletDynamicsCommon.h>
+#include <vector>
+
+#include "Weapon.hpp"
 
 #include <vector>
 
@@ -66,6 +69,22 @@ private:
     bool mJump;
 };
 
+struct GameState
+{
+    int health;
+    int ammo;
+    int score;
+    bool paused;
+    bool gameOver;
+    bool won;
+
+    GameState()
+        : health(100), ammo(20), score(0), paused(false), gameOver(false),
+          won(false)
+    {
+    }
+};
+
 class GameApp : public OgreBites::ApplicationContext, public OgreBites::InputListener
 {
 public:
@@ -77,8 +96,17 @@ public:
     bool mousePressed(const OgreBites::MouseButtonEvent& evt) override;
     bool frameRenderingQueued(const Ogre::FrameEvent& evt) override;
 
+    void restartGame();
+
 private:
+    void addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale);
+    void loadLevel(const std::string& filename);
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
+    void checkProjectiles();
+
+    void togglePause();
+    void updateHUD();
+    void setGameOver(bool won);
 
     void spawnEnemy(const Ogre::Vector3& position);
 
@@ -96,6 +124,7 @@ private:
 
     std::vector<BulletProjectile*> mBullets;
     std::vector<Enemy*> mEnemies;
+
 };
 
 #endif // GAME_APP_HPP
