@@ -41,5 +41,18 @@ This project is intended as a starting point for experimenting with OGRE Next
 and Bullet. It displays 1980s inspired on-screen instructions and fires small
 spheres as bullets using Bullet's physics simulation.
 
+## Levels
+Objects for the environment are described in a simple text format. A sample
+`level.txt` file is included and loaded on start up. Each line contains an
+object type followed by position and scale values:
+
+```
+wall 0 0 10 1 2 0.2
+obstacle 0 0 0 1 1 1
+```
+
+This allows experimenting with different maps by editing or providing a new
+level file.
+
 ## License
 Released under the MIT License. See [LICENSE](LICENSE) for details.

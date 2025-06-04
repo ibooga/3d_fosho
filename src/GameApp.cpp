@@ -5,6 +5,7 @@
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
 #include <OgreVector3.h>
+#include <OgreStringConverter.h>
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -62,6 +63,8 @@ bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 
 void InputHandler::update(float dt)
 {
+    if (mApp->mGameState.paused || mApp->mGameState.gameOver)
+        return;
     const float speed = 5.0f;
     Ogre::Vector3 disp = mDirection * speed * dt;
     mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
@@ -86,6 +89,7 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mOverlaySystem(nullptr),
                      mWeapon(nullptr),
                      mWeaponLabel(nullptr)
+
 {
 }
 
@@ -161,6 +165,10 @@ void GameApp::setup()
     addInputListener(mTrayMgr);
 
     mTrayMgr->createLabel(OgreBites::TL_TOP, "Controls", "INSERT COIN - WASD to Move, SPACE to Jump, LMB to Shoot", 400);
+    mCrosshair = mTrayMgr->createLabel(OgreBites::TL_CENTER, "Crosshair", "+", 50);
+    mHealthBar = mTrayMgr->createProgressBar(OgreBites::TL_BOTTOM, "Health", 200, 20);
+    mHealthBar->setProgress(1.0f);
+    mScoreLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Score", "Score: 0", 120);
 
     // camera
     Ogre::Camera* cam = mSceneMgr->createCamera("MainCam");
@@ -230,11 +238,22 @@ bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
     {
         getRoot()->queueEndRendering();
     }
+    else if (evt.keysym.sym == OgreBites::SDLK_p)
+    {
+        if (!mGameState.gameOver)
+            togglePause();
+    }
+    else if (evt.keysym.sym == OgreBites::SDLK_r)
+    {
+        if (mGameState.gameOver)
+            restartGame();
+    }
     return true;
 }
 
 bool GameApp::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
+
     return true;
 }
 
@@ -321,4 +340,45 @@ void GameApp::checkProjectiles()
         }
     }
     mProjectiles.swap(alive);
+}
+
+void GameApp::togglePause()
+{
+    mGameState.paused = !mGameState.paused;
+    if (mGameState.paused)
+    {
+        mTrayMgr->createLabel(OgreBites::TL_CENTER, "PauseLabel",
+                              "PAUSED - P to Resume, Esc to Quit", 300);
+    }
+    else
+    {
+        mTrayMgr->destroyWidget("PauseLabel");
+    }
+}
+
+void GameApp::updateHUD()
+{
+    if (mHealthBar)
+        mHealthBar->setProgress(static_cast<Ogre::Real>(mGameState.health) / 100.0f);
+    if (mScoreLabel)
+        mScoreLabel->setCaption("Score: " + Ogre::StringConverter::toString(mGameState.score));
+}
+
+void GameApp::setGameOver(bool won)
+{
+    mGameState.gameOver = true;
+    mGameState.won = won;
+    Ogre::String text = won ? "YOU WIN! R to Restart or Esc to Quit" :
+                               "GAME OVER - R to Restart or Esc to Quit";
+    mTrayMgr->createLabel(OgreBites::TL_CENTER, "GameOver", text, 300);
+}
+
+void GameApp::restartGame()
+{
+    mGameState = GameState();
+    if (mTrayMgr->getWidget("PauseLabel"))
+        mTrayMgr->destroyWidget("PauseLabel");
+    if (mTrayMgr->getWidget("GameOver"))
+        mTrayMgr->destroyWidget("GameOver");
+    updateHUD();
 }
