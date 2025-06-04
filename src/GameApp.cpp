@@ -92,6 +92,9 @@ GameApp::~GameApp()
     delete mOverlaySystem;
     mOverlaySystem = nullptr;
 
+    delete mInputHandler;
+    mInputHandler = nullptr;
+
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
@@ -171,6 +174,8 @@ void GameApp::setup()
     btRigidBody::btRigidBodyConstructionInfo groundInfo(0.0f, groundMotion, groundShape);
     btRigidBody* groundBody = new btRigidBody(groundInfo);
     mDynamicsWorld->addRigidBody(groundBody);
+
+    loadLevel("level.txt");
 }
 
 bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)

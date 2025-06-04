@@ -10,6 +10,7 @@
 #include <OgreTrays.h>
 
 #include <btBulletDynamicsCommon.h>
+#include <string>
 
 class GameApp;
 
@@ -61,6 +62,8 @@ public:
     void restartGame();
 
 private:
+    void addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale);
+    void loadLevel(const std::string& filename);
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
 
     void togglePause();
