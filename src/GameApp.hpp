@@ -10,6 +10,7 @@
 #include <OgreTrays.h>
 
 #include <btBulletDynamicsCommon.h>
+#include "Player.hpp"
 
 class GameApp;
 
@@ -42,6 +43,9 @@ public:
     bool mousePressed(const OgreBites::MouseButtonEvent& evt) override;
     bool frameRenderingQueued(const Ogre::FrameEvent& evt) override;
 
+    Ogre::SceneNode* getCameraNode() const { return mCameraNode; }
+    Player* getPlayer() const { return mPlayer; }
+
 private:
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
 
@@ -55,6 +59,8 @@ private:
     Ogre::SceneManager* mSceneMgr;
     OgreBites::TrayManager* mTrayMgr;
     Ogre::OverlaySystem* mOverlaySystem;
+    InputHandler* mInputHandler;
+    Player* mPlayer;
 };
 
 #endif // GAME_APP_HPP
