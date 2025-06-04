@@ -3,12 +3,68 @@
 #include <OgreEntity.h>
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
+#include <OgreVector3.h>
+
+InputHandler::InputHandler(GameApp* app)
+    : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
+{
+}
+
+bool InputHandler::keyPressed(const OgreBites::KeyboardEvent& evt)
+{
+    if (evt.keysym.sym == OgreBites::SDLK_w)
+        mDirection.z = -1;
+    else if (evt.keysym.sym == OgreBites::SDLK_s)
+        mDirection.z = 1;
+    else if (evt.keysym.sym == OgreBites::SDLK_a)
+        mDirection.x = -1;
+    else if (evt.keysym.sym == OgreBites::SDLK_d)
+        mDirection.x = 1;
+    else if (evt.keysym.sym == OgreBites::SDLK_SPACE)
+        mJump = true;
+    return true;
+}
+
+bool InputHandler::keyReleased(const OgreBites::KeyboardEvent& evt)
+{
+    if (evt.keysym.sym == OgreBites::SDLK_w || evt.keysym.sym == OgreBites::SDLK_s)
+        mDirection.z = 0;
+    if (evt.keysym.sym == OgreBites::SDLK_a || evt.keysym.sym == OgreBites::SDLK_d)
+        mDirection.x = 0;
+    return true;
+}
+
+bool InputHandler::mouseMoved(const OgreBites::MouseMotionEvent& evt)
+{
+    const float sensitivity = 0.1f;
+    mApp->mCameraNode->yaw(Ogre::Degree(-evt.xrel * sensitivity), Ogre::Node::TS_WORLD);
+    mApp->mCameraNode->pitch(Ogre::Degree(-evt.yrel * sensitivity));
+    return true;
+}
+
+bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
+{
+    return true;
+}
+
+void InputHandler::update(float dt)
+{
+    const float speed = 5.0f;
+    Ogre::Vector3 disp = mDirection * speed * dt;
+    mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
+    if (mJump)
+    {
+        mApp->mCameraNode->translate(0, 3.0f * dt, 0, Ogre::Node::TS_WORLD);
+        mJump = false;
+    }
+}
 
 GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mDynamicsWorld(nullptr),
                      mCameraNode(nullptr),
                      mSceneMgr(nullptr),
-                     mTrayMgr(nullptr)
+                     mTrayMgr(nullptr),
+                     mInputHandler(nullptr)
 {
 }
 
@@ -37,6 +93,9 @@ void GameApp::setup()
     mCameraNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
     mCameraNode->attachObject(cam);
     getRenderWindow()->addViewport(cam);
+
+    mInputHandler = new InputHandler(this);
+    addInputListener(mInputHandler);
 
     // lighting
     mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5f, 0.5f, 0.5f));
@@ -91,6 +150,8 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
 {
     if (mDynamicsWorld)
         mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
+    if (mInputHandler)
+        mInputHandler->update(evt.timeSinceLastFrame);
     return true;
 }
 
