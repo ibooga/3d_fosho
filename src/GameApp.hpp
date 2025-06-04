@@ -14,20 +14,41 @@
 
 #include "Weapon.hpp"
 
+#include <vector>
+
 class GameApp;
 
-struct Projectile
+struct BulletProjectile
 {
     Ogre::SceneNode* node;
     btRigidBody* body;
-    int damage;
+    float life;
 };
 
-struct Target
+class Enemy
 {
-    Ogre::SceneNode* node;
-    btRigidBody* body;
-    int health;
+public:
+    Enemy(Ogre::SceneManager* sceneMgr, btDiscreteDynamicsWorld* world,
+          btAlignedObjectArray<btCollisionShape*>& collisionShapes,
+          const Ogre::Vector3& position);
+    ~Enemy();
+
+    void update(float dt, const Ogre::Vector3& playerPos);
+    void takeDamage(int amount) { mHealth -= amount; }
+    bool isDead() const { return mHealth <= 0; }
+
+    Ogre::SceneNode* getNode() const { return mNode; }
+    btRigidBody* getBody() const { return mBody; }
+
+private:
+    Ogre::SceneNode* mNode;
+    btRigidBody* mBody;
+    int mHealth;
+    Ogre::Vector3 mSpawnPos;
+    Ogre::Vector3 mPatrolDir;
+    float mPatrolDistance;
+    float mTraveled;
+    enum class State { Patrol, Chase, Attack } mState;
 };
 
 class InputHandler : public OgreBites::InputListener
@@ -87,6 +108,8 @@ private:
     void updateHUD();
     void setGameOver(bool won);
 
+    void spawnEnemy(const Ogre::Vector3& position);
+
     btDiscreteDynamicsWorld* mDynamicsWorld;
     btBroadphaseInterface* mBroadphase;
     btCollisionDispatcher* mDispatcher;
@@ -97,12 +120,11 @@ private:
     Ogre::SceneManager* mSceneMgr;
     OgreBites::TrayManager* mTrayMgr;
     Ogre::OverlaySystem* mOverlaySystem;
+    InputHandler* mInputHandler;
 
-    std::vector<Projectile*> mProjectiles;
-    std::vector<Target*> mTargets;
+    std::vector<BulletProjectile*> mBullets;
+    std::vector<Enemy*> mEnemies;
 
-    Weapon* mWeapon;
-    OgreBites::Label* mWeaponLabel;
 };
 
 #endif // GAME_APP_HPP

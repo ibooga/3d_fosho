@@ -4,8 +4,8 @@
 #include <OgreEntity.h>
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
-#include <OgreVector3.h>
-#include <OgreStringConverter.h>
+#include <OgreVector3.h>8
+#include <OgreSceneNode.h>
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -77,6 +77,82 @@ void InputHandler::update(float dt)
         mApp->mWeapon->update(dt);
 }
 
+// ---------------------------------------------------------------------
+Enemy::Enemy(Ogre::SceneManager* sceneMgr, btDiscreteDynamicsWorld* world,
+             btAlignedObjectArray<btCollisionShape*>& collisionShapes,
+             const Ogre::Vector3& position)
+    : mNode(nullptr), mBody(nullptr), mHealth(3), mSpawnPos(position),
+      mPatrolDir(Ogre::Vector3::UNIT_X), mPatrolDistance(5.0f), mTraveled(0.0f),
+      mState(State::Patrol)
+{
+    Ogre::Entity* ent = sceneMgr->createEntity(Ogre::SceneManager::PT_CUBE);
+    mNode = sceneMgr->getRootSceneNode()->createChildSceneNode(position);
+    mNode->setScale(0.5f, 0.5f, 0.5f);
+    mNode->attachObject(ent);
+
+    btCollisionShape* shape = new btBoxShape(btVector3(0.5f, 0.5f, 0.5f));
+    collisionShapes.push_back(shape);
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(position.x, position.y, position.z));
+    btScalar mass = 1.0f;
+    btVector3 inertia(0,0,0);
+    shape->calculateLocalInertia(mass, inertia);
+    btDefaultMotionState* motion = new btDefaultMotionState(t);
+    btRigidBody::btRigidBodyConstructionInfo info(mass, motion, shape, inertia);
+    mBody = new btRigidBody(info);
+    mBody->setAngularFactor(0);
+    world->addRigidBody(mBody);
+}
+
+Enemy::~Enemy()
+{
+    if (mNode)
+        mNode->getParentSceneNode()->removeAndDestroyChild(mNode);
+    // body removed by dynamics world outside
+}
+
+void Enemy::update(float dt, const Ogre::Vector3& playerPos)
+{
+    btTransform trans;
+    mBody->getMotionState()->getWorldTransform(trans);
+    Ogre::Vector3 pos(trans.getOrigin().x(), trans.getOrigin().y(), trans.getOrigin().z());
+
+    float distanceToPlayer = pos.distance(playerPos);
+    if (distanceToPlayer < 2.0f)
+        mState = State::Attack;
+    else if (distanceToPlayer < 10.0f)
+        mState = State::Chase;
+    else if (distanceToPlayer > 12.0f)
+        mState = State::Patrol;
+
+    Ogre::Vector3 velocity = Ogre::Vector3::ZERO;
+    const float speed = 2.0f;
+    switch (mState)
+    {
+    case State::Patrol:
+        velocity = mPatrolDir * speed;
+        mTraveled += dt * speed;
+        if (mTraveled > mPatrolDistance)
+        {
+            mTraveled = 0.0f;
+            mPatrolDir = -mPatrolDir;
+        }
+        break;
+    case State::Chase:
+        velocity = (playerPos - pos).normalisedCopy() * speed * 1.5f;
+        break;
+    case State::Attack:
+        velocity = Ogre::Vector3::ZERO;
+        break;
+    }
+
+    mBody->setLinearVelocity(btVector3(velocity.x, velocity.y, velocity.z));
+
+    // sync scene node
+    mNode->setPosition(pos);
+}
+
 GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mDynamicsWorld(nullptr),
                      mBroadphase(nullptr),
@@ -144,8 +220,28 @@ GameApp::~GameApp()
     delete mCollisionConfig;
     mCollisionConfig = nullptr;
 
-    delete mWeapon;
-    mWeapon = nullptr;
+    for (auto bullet : mBullets)
+    {
+        mDynamicsWorld->removeRigidBody(bullet->body);
+        delete bullet->body->getMotionState();
+        delete bullet->body;
+        if (bullet->node)
+            bullet->node->getParentSceneNode()->removeAndDestroyChild(bullet->node);
+        delete bullet;
+    }
+    mBullets.clear();
+
+    for (auto enemy : mEnemies)
+    {
+        mDynamicsWorld->removeRigidBody(enemy->getBody());
+        delete enemy->getBody()->getMotionState();
+        delete enemy->getBody();
+        delete enemy;
+    }
+    mEnemies.clear();
+
+    delete mInputHandler;
+    mInputHandler = nullptr;
 }
 
 void GameApp::setup()
@@ -212,24 +308,9 @@ void GameApp::setup()
     btRigidBody* groundBody = new btRigidBody(groundInfo);
     mDynamicsWorld->addRigidBody(groundBody);
 
-    // simple target to shoot at
-    Ogre::Entity* boxEnt = mSceneMgr->createEntity(Ogre::SceneManager::PT_CUBE);
-    Target* tgt = new Target();
-    tgt->node = mSceneMgr->getRootSceneNode()->createChildSceneNode(Ogre::Vector3(0,1,-10));
-    tgt->node->setScale(0.5f,0.5f,0.5f);
-    tgt->node->attachObject(boxEnt);
-    btCollisionShape* boxShape = new btBoxShape(btVector3(0.5f,0.5f,0.5f));
-    mCollisionShapes.push_back(boxShape);
-    btTransform boxTr;
-    boxTr.setIdentity();
-    boxTr.setOrigin(btVector3(0,1,-10));
-    btDefaultMotionState* boxMotion = new btDefaultMotionState(boxTr);
-    btRigidBody::btRigidBodyConstructionInfo boxInfo(0.0f, boxMotion, boxShape);
-    tgt->body = new btRigidBody(boxInfo);
-    tgt->body->setUserPointer(tgt);
-    tgt->health = 100;
-    mDynamicsWorld->addRigidBody(tgt->body);
-    mTargets.push_back(tgt);
+    spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
+    spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
+    spawnEnemy(Ogre::Vector3(0, 0.5f, 5));
 }
 
 bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
@@ -263,7 +344,67 @@ bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
         mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
     if (mInputHandler)
         mInputHandler->update(evt.timeSinceLastFrame);
-    checkProjectiles();
+
+    Ogre::Vector3 playerPos = mCameraNode->getPosition();
+    for (auto enemy : mEnemies)
+        enemy->update(evt.timeSinceLastFrame, playerPos);
+
+    // update bullets and check collisions
+    for (auto it = mBullets.begin(); it != mBullets.end(); )
+    {
+        BulletProjectile* proj = *it;
+        proj->life -= evt.timeSinceLastFrame;
+        btTransform trans;
+        proj->body->getMotionState()->getWorldTransform(trans);
+        Ogre::Vector3 pos(trans.getOrigin().x(), trans.getOrigin().y(), trans.getOrigin().z());
+        proj->node->setPosition(pos);
+
+        bool remove = proj->life <= 0.0f;
+        for (auto enemy : mEnemies)
+        {
+            btTransform et;
+            enemy->getBody()->getMotionState()->getWorldTransform(et);
+            Ogre::Vector3 epos(et.getOrigin().x(), et.getOrigin().y(), et.getOrigin().z());
+            if (pos.distance(epos) < 1.0f)
+            {
+                enemy->takeDamage(1);
+                remove = true;
+                break;
+            }
+        }
+        if (remove)
+        {
+            mDynamicsWorld->removeRigidBody(proj->body);
+            delete proj->body->getMotionState();
+            delete proj->body;
+            if (proj->node)
+                proj->node->getParentSceneNode()->removeAndDestroyChild(proj->node);
+            delete proj;
+            it = mBullets.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // remove dead enemies
+    for (auto it = mEnemies.begin(); it != mEnemies.end(); )
+    {
+        Enemy* e = *it;
+        if (e->isDead())
+        {
+            mDynamicsWorld->removeRigidBody(e->getBody());
+            delete e->getBody()->getMotionState();
+            delete e->getBody();
+            delete e;
+            it = mEnemies.erase(it);
+        }
+        else
+        {
+            ++it;
+        }
+    }
     return true;
 }
 
@@ -293,92 +434,17 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
     proj->body = body;
     proj->damage = 10;
     mDynamicsWorld->addRigidBody(body);
-    mProjectiles.push_back(proj);
-    body->setUserPointer(proj);
+
+    BulletProjectile* proj = new BulletProjectile();
+    proj->node = node;
+    proj->body = body;
+    proj->life = 3.0f; // seconds
+    mBullets.push_back(proj);
 }
 
-void GameApp::checkProjectiles()
+void GameApp::spawnEnemy(const Ogre::Vector3& position)
 {
-    std::vector<Projectile*> alive;
-    for (auto proj : mProjectiles)
-    {
-        struct Callback : public btCollisionWorld::ContactResultCallback
-        {
-            Projectile* p;
-            btCollisionObject* hit{nullptr};
-            Callback(Projectile* pr) : p(pr) {}
-            btScalar addSingleResult(btManifoldPoint& cp,
-                                     const btCollisionObjectWrapper* col0,
-                                     int , int,
-                                     const btCollisionObjectWrapper* col1,
-                                     int , int) override
-            {
-                hit = (col0->getCollisionObject() == p->body) ?
-                          const_cast<btCollisionObject*>(col1->getCollisionObject()) :
-                          const_cast<btCollisionObject*>(col0->getCollisionObject());
-                return 0;
-            }
-        } cb(proj);
+    Enemy* e = new Enemy(mSceneMgr, mDynamicsWorld, mCollisionShapes, position);
+    mEnemies.push_back(e);
 
-        mDynamicsWorld->contactTest(proj->body, cb);
-        if (cb.hit)
-        {
-            Target* tgt = static_cast<Target*>(cb.hit->getUserPointer());
-            if (tgt)
-            {
-                tgt->health -= proj->damage;
-            }
-            mDynamicsWorld->removeRigidBody(proj->body);
-            delete proj->body->getMotionState();
-            delete proj->body;
-            mSceneMgr->destroySceneNode(proj->node);
-            delete proj;
-        }
-        else
-        {
-            alive.push_back(proj);
-        }
-    }
-    mProjectiles.swap(alive);
-}
-
-void GameApp::togglePause()
-{
-    mGameState.paused = !mGameState.paused;
-    if (mGameState.paused)
-    {
-        mTrayMgr->createLabel(OgreBites::TL_CENTER, "PauseLabel",
-                              "PAUSED - P to Resume, Esc to Quit", 300);
-    }
-    else
-    {
-        mTrayMgr->destroyWidget("PauseLabel");
-    }
-}
-
-void GameApp::updateHUD()
-{
-    if (mHealthBar)
-        mHealthBar->setProgress(static_cast<Ogre::Real>(mGameState.health) / 100.0f);
-    if (mScoreLabel)
-        mScoreLabel->setCaption("Score: " + Ogre::StringConverter::toString(mGameState.score));
-}
-
-void GameApp::setGameOver(bool won)
-{
-    mGameState.gameOver = true;
-    mGameState.won = won;
-    Ogre::String text = won ? "YOU WIN! R to Restart or Esc to Quit" :
-                               "GAME OVER - R to Restart or Esc to Quit";
-    mTrayMgr->createLabel(OgreBites::TL_CENTER, "GameOver", text, 300);
-}
-
-void GameApp::restartGame()
-{
-    mGameState = GameState();
-    if (mTrayMgr->getWidget("PauseLabel"))
-        mTrayMgr->destroyWidget("PauseLabel");
-    if (mTrayMgr->getWidget("GameOver"))
-        mTrayMgr->destroyWidget("GameOver");
-    updateHUD();
 }
