@@ -4,8 +4,9 @@
 #include <OgreEntity.h>
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
-#include <OgreVector3.h>8
+#include <OgreVector3.h>
 #include <OgreSceneNode.h>
+#include <fstream>
 
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
@@ -187,30 +188,13 @@ GameApp::~GameApp()
 
     delete mWeaponLabel;
     mWeaponLabel = nullptr;
+    delete mWeapon;
+    mWeapon = nullptr;
 
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
 
-    for (auto proj : mProjectiles)
-    {
-        mDynamicsWorld->removeRigidBody(proj->body);
-        delete proj->body->getMotionState();
-        delete proj->body;
-        mSceneMgr->destroySceneNode(proj->node);
-        delete proj;
-    }
-    mProjectiles.clear();
-
-    for (auto tgt : mTargets)
-    {
-        mDynamicsWorld->removeRigidBody(tgt->body);
-        delete tgt->body->getMotionState();
-        delete tgt->body;
-        mSceneMgr->destroySceneNode(tgt->node);
-        delete tgt;
-    }
-    mTargets.clear();
 
     delete mDynamicsWorld;
     mDynamicsWorld = nullptr;
@@ -440,10 +424,6 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
 
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
-    Projectile* proj = new Projectile();
-    proj->node = node;
-    proj->body = body;
-    proj->damage = 10;
     mDynamicsWorld->addRigidBody(body);
 
     BulletProjectile* proj = new BulletProjectile();
@@ -458,4 +438,118 @@ void GameApp::spawnEnemy(const Ogre::Vector3& position)
     Enemy* e = new Enemy(mSceneMgr, mDynamicsWorld, mCollisionShapes, position);
     mEnemies.push_back(e);
 
+}
+
+void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
+{
+    Ogre::Entity* ent = mSceneMgr->createEntity(Ogre::SceneManager::PT_CUBE);
+    Ogre::SceneNode* node = mSceneMgr->getRootSceneNode()->createChildSceneNode(position);
+    node->setScale(scale);
+    node->attachObject(ent);
+
+    btCollisionShape* shape = new btBoxShape(btVector3(scale.x, scale.y, scale.z));
+    mCollisionShapes.push_back(shape);
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(position.x, position.y, position.z));
+    btDefaultMotionState* motion = new btDefaultMotionState(t);
+    btRigidBody::btRigidBodyConstructionInfo info(0.0f, motion, shape);
+    btRigidBody* body = new btRigidBody(info);
+    mDynamicsWorld->addRigidBody(body);
+}
+
+void GameApp::loadLevel(const std::string& filename)
+{
+    std::ifstream file(filename);
+    if (!file)
+        return;
+
+    std::string type;
+    float x, y, z, sx, sy, sz;
+    while (file >> type >> x >> y >> z >> sx >> sy >> sz)
+    {
+        addStaticCube({x, y, z}, {sx, sy, sz});
+    }
+}
+
+void GameApp::checkProjectiles()
+{
+    // projectiles are handled in frameRenderingQueued
+}
+
+void GameApp::togglePause()
+{
+    mGameState.paused = !mGameState.paused;
+    if (mGameState.paused)
+        mTrayMgr->showCursor();
+    else
+        mTrayMgr->hideCursor();
+}
+
+void GameApp::updateHUD()
+{
+    if (mHealthBar)
+        mHealthBar->setProgress(static_cast<float>(mGameState.health) / 100.0f);
+    if (mScoreLabel)
+        mScoreLabel->setCaption("Score: " + std::to_string(mGameState.score));
+    if (mWeaponLabel && mWeapon)
+        mWeaponLabel->setCaption(mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()));
+}
+
+void GameApp::setGameOver(bool won)
+{
+    mGameState.gameOver = true;
+    mGameState.won = won;
+    mGameState.paused = true;
+    mTrayMgr->showCursor();
+}
+
+void GameApp::restartGame()
+{
+    // clear bullets
+    for (auto bullet : mBullets)
+    {
+        mDynamicsWorld->removeRigidBody(bullet->body);
+        delete bullet->body->getMotionState();
+        delete bullet->body;
+        if (bullet->node)
+            bullet->node->getParentSceneNode()->removeAndDestroyChild(bullet->node);
+        delete bullet;
+    }
+    mBullets.clear();
+
+    // clear enemies
+    for (auto enemy : mEnemies)
+    {
+        mDynamicsWorld->removeRigidBody(enemy->getBody());
+        delete enemy->getBody()->getMotionState();
+        delete enemy->getBody();
+        delete enemy;
+    }
+    mEnemies.clear();
+
+    // respawn enemies
+    spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
+    spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
+    spawnEnemy(Ogre::Vector3(0, 0.5f, 5));
+
+    // reset player position
+    if (mPlayer)
+    {
+        btTransform t;
+        t.setIdentity();
+        t.setOrigin(btVector3(0, 1.0f, 0));
+        mPlayer->getBody()->setWorldTransform(t);
+        mPlayer->getBody()->setLinearVelocity(btVector3(0,0,0));
+        mPlayer->getBody()->setAngularVelocity(btVector3(0,0,0));
+    }
+
+    // reset weapon
+    if (mWeapon)
+        delete mWeapon;
+    mWeapon = new Pistol(this);
+
+    mGameState = GameState();
+    updateHUD();
+    mTrayMgr->hideCursor();
 }
