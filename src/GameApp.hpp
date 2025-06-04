@@ -15,6 +15,7 @@ class GameApp : public OgreBites::ApplicationContext, public OgreBites::InputLis
 {
 public:
     GameApp();
+    ~GameApp();
 
     void setup() override;
     bool keyPressed(const OgreBites::KeyboardEvent& evt) override;
@@ -25,10 +26,15 @@ private:
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
 
     btDiscreteDynamicsWorld* mDynamicsWorld;
+    btBroadphaseInterface* mBroadphase;
+    btCollisionDispatcher* mDispatcher;
+    btSequentialImpulseConstraintSolver* mSolver;
+    btDefaultCollisionConfiguration* mCollisionConfig;
     btAlignedObjectArray<btCollisionShape*> mCollisionShapes;
     Ogre::SceneNode* mCameraNode;
     Ogre::SceneManager* mSceneMgr;
     OgreBites::TrayManager* mTrayMgr;
+    Ogre::OverlaySystem* mOverlaySystem;
 };
 
 #endif // GAME_APP_HPP
