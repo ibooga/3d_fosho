@@ -11,7 +11,42 @@
 
 #include <btBulletDynamicsCommon.h>
 
+#include <vector>
+
 class GameApp;
+
+struct BulletProjectile
+{
+    Ogre::SceneNode* node;
+    btRigidBody* body;
+    float life;
+};
+
+class Enemy
+{
+public:
+    Enemy(Ogre::SceneManager* sceneMgr, btDiscreteDynamicsWorld* world,
+          btAlignedObjectArray<btCollisionShape*>& collisionShapes,
+          const Ogre::Vector3& position);
+    ~Enemy();
+
+    void update(float dt, const Ogre::Vector3& playerPos);
+    void takeDamage(int amount) { mHealth -= amount; }
+    bool isDead() const { return mHealth <= 0; }
+
+    Ogre::SceneNode* getNode() const { return mNode; }
+    btRigidBody* getBody() const { return mBody; }
+
+private:
+    Ogre::SceneNode* mNode;
+    btRigidBody* mBody;
+    int mHealth;
+    Ogre::Vector3 mSpawnPos;
+    Ogre::Vector3 mPatrolDir;
+    float mPatrolDistance;
+    float mTraveled;
+    enum class State { Patrol, Chase, Attack } mState;
+};
 
 class InputHandler : public OgreBites::InputListener
 {
@@ -45,6 +80,8 @@ public:
 private:
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
 
+    void spawnEnemy(const Ogre::Vector3& position);
+
     btDiscreteDynamicsWorld* mDynamicsWorld;
     btBroadphaseInterface* mBroadphase;
     btCollisionDispatcher* mDispatcher;
@@ -55,6 +92,10 @@ private:
     Ogre::SceneManager* mSceneMgr;
     OgreBites::TrayManager* mTrayMgr;
     Ogre::OverlaySystem* mOverlaySystem;
+    InputHandler* mInputHandler;
+
+    std::vector<BulletProjectile*> mBullets;
+    std::vector<Enemy*> mEnemies;
 };
 
 #endif // GAME_APP_HPP
