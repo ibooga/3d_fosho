@@ -129,6 +129,14 @@ private:
     std::vector<BulletProjectile*> mBullets;
     std::vector<Enemy*> mEnemies;
 
+    GameState mGameState;
+
+    OgreBites::Label* mCrosshair{nullptr};
+    OgreBites::ProgressBar* mHealthBar{nullptr};
+    OgreBites::Label* mScoreLabel{nullptr};
+    OgreBites::Label* mWeaponLabel{nullptr};
+    Weapon* mWeapon{nullptr};
+
 };
 
 #endif // GAME_APP_HPP
