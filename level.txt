@@ -1,0 +1,6 @@
+# type x y z sx sy sz
+wall 0 0 10 1 2 0.2
+wall 0 0 -10 1 2 0.2
+wall 10 0 0 0.2 2 1
+wall -10 0 0 0.2 2 1
+obstacle 0 0 0 1 1 1
