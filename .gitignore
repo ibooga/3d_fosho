@@ -1,0 +1,13 @@
+# Build artifacts
+build/
+
+# Object files
+*.o
+*.obj
+
+# Logs
+*.log
+
+# Editor swap files
+*~
+

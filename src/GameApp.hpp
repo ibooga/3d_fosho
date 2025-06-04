@@ -11,6 +11,26 @@
 
 #include <btBulletDynamicsCommon.h>
 
+class GameApp;
+
+class InputHandler : public OgreBites::InputListener
+{
+public:
+    InputHandler(GameApp* app);
+
+    bool keyPressed(const OgreBites::KeyboardEvent& evt) override;
+    bool keyReleased(const OgreBites::KeyboardEvent& evt) override;
+    bool mouseMoved(const OgreBites::MouseMotionEvent& evt) override;
+    bool mousePressed(const OgreBites::MouseButtonEvent& evt) override;
+
+    void update(float dt);
+
+private:
+    GameApp* mApp;
+    Ogre::Vector3 mDirection;
+    bool mJump;
+};
+
 class GameApp : public OgreBites::ApplicationContext, public OgreBites::InputListener
 {
 public:
