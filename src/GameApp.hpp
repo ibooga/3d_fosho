@@ -137,6 +137,7 @@ private:
     OgreBites::Label* mWeaponLabel{nullptr};
     Weapon* mWeapon{nullptr};
 
+
 };
 
 #endif // GAME_APP_HPP

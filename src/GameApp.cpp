@@ -10,6 +10,7 @@
 #include <fstream>
 #include <sstream>
 
+
 InputHandler::InputHandler(GameApp* app)
     : mApp(app), mDirection(Ogre::Vector3::ZERO), mJump(false)
 {
@@ -202,25 +203,6 @@ GameApp::~GameApp()
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
 
-    for (auto proj : mProjectiles)
-    {
-        mDynamicsWorld->removeRigidBody(proj->body);
-        delete proj->body->getMotionState();
-        delete proj->body;
-        mSceneMgr->destroySceneNode(proj->node);
-        delete proj;
-    }
-    mProjectiles.clear();
-
-    for (auto tgt : mTargets)
-    {
-        mDynamicsWorld->removeRigidBody(tgt->body);
-        delete tgt->body->getMotionState();
-        delete tgt->body;
-        mSceneMgr->destroySceneNode(tgt->node);
-        delete tgt;
-    }
-    mTargets.clear();
 
     delete mDynamicsWorld;
     mDynamicsWorld = nullptr;
@@ -455,17 +437,19 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
 
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
-    Projectile* proj = new Projectile();
-    proj->node = node;
-    proj->body = body;
-    proj->damage = 10;
+
+    Projectile* basicProj = new Projectile();
+    basicProj->node = node;
+    basicProj->body = body;
+    basicProj->damage = 10;
+
     mDynamicsWorld->addRigidBody(body);
 
-    BulletProjectile* proj = new BulletProjectile();
-    proj->node = node;
-    proj->body = body;
-    proj->life = 3.0f; // seconds
-    mBullets.push_back(proj);
+    BulletProjectile* bulletProj = new BulletProjectile();
+    bulletProj->node = node;
+    bulletProj->body = body;
+    bulletProj->life = 3.0f; // seconds
+    mBullets.push_back(bulletProj);
 }
 
 void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
