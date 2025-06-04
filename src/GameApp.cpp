@@ -4,7 +4,7 @@
 #include <OgreEntity.h>
 #include <OgreMeshManager.h>
 #include <OgreRoot.h>
-#include <OgreVector3.h>8
+#include <OgreVector3.h>
 #include <OgreSceneNode.h>
 
 InputHandler::InputHandler(GameApp* app)
@@ -440,17 +440,17 @@ void GameApp::createBullet(const Ogre::Vector3& position, const Ogre::Quaternion
 
     Ogre::Vector3 forward = orient * Ogre::Vector3::NEGATIVE_UNIT_Z;
     body->setLinearVelocity(btVector3(forward.x, forward.y, forward.z) * 25.0f);
-    Projectile* proj = new Projectile();
-    proj->node = node;
-    proj->body = body;
-    proj->damage = 10;
+    Projectile* basicProj = new Projectile();
+    basicProj->node = node;
+    basicProj->body = body;
+    basicProj->damage = 10;
     mDynamicsWorld->addRigidBody(body);
 
-    BulletProjectile* proj = new BulletProjectile();
-    proj->node = node;
-    proj->body = body;
-    proj->life = 3.0f; // seconds
-    mBullets.push_back(proj);
+    BulletProjectile* bulletProj = new BulletProjectile();
+    bulletProj->node = node;
+    bulletProj->body = body;
+    bulletProj->life = 3.0f; // seconds
+    mBullets.push_back(bulletProj);
 }
 
 void GameApp::spawnEnemy(const Ogre::Vector3& position)
