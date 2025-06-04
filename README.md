@@ -1,2 +1,31 @@
-# 3d_fosho
-3d_forest_shooter
+# ArcadeFPS
+
+A simple first-person shooter style game inspired by 1980s arcade machines. It
+uses **OGRE Next** for rendering and **Bullet** for physics. The controls are
+shown on screen in an arcade-like fashion using OGRE's tray system.
+
+## Requirements
+- [OGRE Next 3.0.0](https://github.com/OGRECave/ogre-next/releases)
+- [Bullet Physics 3.x](https://github.com/bulletphysics/bullet3)
+- C++17 compatible compiler
+- CMake 3.10 or newer
+
+Make sure OGRE Next and Bullet are installed and visible to CMake via
+`OGRE_DIR` and `BULLET_ROOT` (or system paths).
+
+## Building
+```bash
+mkdir build
+cd build
+cmake ..
+make
+```
+
+## Running
+After building, run the produced `ArcadeFPS` executable. A small window will
+appear with basic 3D graphics. Movement is controlled with **WASD**, jumping is
+**Space**, and shooting is the left mouse button. Press **Esc** to quit.
+
+This project is intended as a starting point for experimenting with OGRE Next
+and Bullet. It displays 1980s inspired on-screen instructions and fires small
+spheres as bullets using Bullet's physics simulation.
