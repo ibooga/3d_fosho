@@ -37,6 +37,18 @@ xvfb-run -a -s "-screen 0 1024x768x24" ./build/ArcadeFPS
 Ensure OGRE's media assets are installed and that GPU drivers are properly
 configured.
 
+## Troubleshooting window display on Linux
+OGRE Next 3.0 requires additional setup on some Ubuntu systems. If the game
+starts without showing a window:
+
+1. Verify that the OpenGL version reported by `glxinfo` is at least 3.3.
+2. Use the X11 backend by setting the environment variables:
+   `SDL_VIDEODRIVER=x11` and `GDK_BACKEND=x11`.
+3. Make sure OGRE was built with an `AbiCookie` and that the application was
+   compiled against the same headers.
+4. Run the game with `--log-level debug` to inspect the generated `Ogre.log`
+   for missing plugins or driver issues.
+
 This project is intended as a starting point for experimenting with OGRE Next
 and Bullet. It displays 1980s inspired on-screen instructions and fires small
 spheres as bullets using Bullet's physics simulation.

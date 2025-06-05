@@ -253,6 +253,9 @@ void GameApp::setup()
     OgreBites::ApplicationContext::setup();
     addInputListener(this);
 
+    if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
+        throw std::runtime_error("SDL video not initialized");
+
     // Overlay system for 2D elements
     mOverlaySystem = new Ogre::OverlaySystem();
     mSceneMgr = getRoot()->createSceneManager();
