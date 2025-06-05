@@ -1,0 +1,65 @@
+● Here are the recommended ways to run and test the game:
+
+  1. Using the provided script (recommended)
+
+  cd /home/cai/3d_fosho
+  ./run_game.sh
+
+  This script:
+  - Sets optimal environment variables for Linux
+  - Checks system OpenGL capabilities
+  - Verifies library dependencies
+  - Launches the game with proper configuration
+
+  2. Direct execution
+
+  cd /home/cai/3d_fosho/build
+  ./ArcadeFPS
+
+  3. Testing the game functionality
+
+  Once the window appears, you can test these features:
+
+  Controls:
+  - WASD - Move around
+  - Space - Jump
+  - Mouse - Look around
+  - Left Mouse Button - Shoot
+  - P - Pause game
+  - R - Restart game (when game over)
+  - Escape - Exit game
+
+  What to verify:
+  - Window displays properly (should show a 3D scene)
+  - Camera movement responds to mouse
+  - Player movement works with WASD keys
+  - Physics simulation is running (objects fall with gravity)
+  - UI elements visible (crosshair, health bar, score)
+  - Enemies spawn and move around
+  - Shooting creates projectiles
+
+  4. If the window doesn't appear
+
+  Try these troubleshooting steps:
+
+  # Check if X11 is running
+  echo $XDG_SESSION_TYPE
+
+  # Force X11 if using Wayland
+  export SDL_VIDEODRIVER=x11
+  export GDK_BACKEND=x11
+  ./build/ArcadeFPS
+
+  # Check OpenGL support
+  glxinfo | grep "OpenGL version"
+
+  # Run with different render system
+  export OGRE_RTT_MODE=FBO
+  ./build/ArcadeFPS
+
+  5. Monitor performance
+
+  The game shows FPS stats in the bottom-left corner. You should see smooth 60+ FPS on most modern systems.
+
+  The game is now properly configured for Ubuntu Linux and should display the window correctly with all the OGRE Next 3.0 fixes applied!
+

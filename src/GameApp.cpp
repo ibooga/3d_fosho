@@ -9,6 +9,8 @@
 #include <OgreStringConverter.h>
 #include <fstream>
 #include <sstream>
+#include <cstdlib>
+#include <cstdio>
 
 
 InputHandler::InputHandler(GameApp* app)
@@ -157,6 +159,36 @@ void Enemy::update(float dt, const Ogre::Vector3& playerPos)
     mNode->setPosition(pos);
 }
 
+void GameApp::configureLinuxEnvironment()
+{
+    // Set SDL hints for Linux compatibility
+    SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_PING, "0");
+    
+    // Prefer X11 for stability over Wayland
+    if (!getenv("SDL_VIDEODRIVER"))
+    {
+        SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
+        setenv("SDL_VIDEODRIVER", "x11", 1);
+        setenv("GDK_BACKEND", "x11", 1);
+    }
+    
+    // Ensure DISPLAY is set for headless environments
+    if (!getenv("DISPLAY"))
+    {
+        setenv("DISPLAY", ":0", 1);
+    }
+    
+    // Log the configuration
+    const char* sessionType = getenv("XDG_SESSION_TYPE");
+    const char* videoDriver = getenv("SDL_VIDEODRIVER");
+    const char* display = getenv("DISPLAY");
+    
+    printf("Linux Environment Configuration:\n");
+    printf("  XDG_SESSION_TYPE: %s\n", sessionType ? sessionType : "not set");
+    printf("  SDL_VIDEODRIVER: %s\n", videoDriver ? videoDriver : "not set");
+    printf("  DISPLAY: %s\n", display ? display : "not set");
+}
+
 GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mDynamicsWorld(nullptr),
                      mBroadphase(nullptr),
@@ -175,16 +207,43 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
                      mHealthBar(nullptr),
                      mScoreLabel(nullptr)
 {
+    // Configure Linux environment before OGRE initialization
+    configureLinuxEnvironment();
 }
 
 int GameApp::go()
 {
     try {
+        // Ensure SDL video subsystem is available
+        if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
+        {
+            if (SDL_InitSubSystem(SDL_INIT_VIDEO) != 0)
+            {
+                Ogre::LogManager::getSingleton().logMessage("Failed to initialize SDL video subsystem: " + std::string(SDL_GetError()));
+                return 1;
+            }
+        }
+        
         initApp();
+        
+        // Verify render window was created successfully
+        if (!getRenderWindow())
+        {
+            Ogre::LogManager::getSingleton().logMessage("Failed to create render window");
+            return 1;
+        }
+        
         getRoot()->startRendering();
         closeApp();
         return 0;
-    } catch (std::exception& e) {
+    } catch (const Ogre::Exception& e) {
+        Ogre::LogManager::getSingleton().logMessage("OGRE Exception: " + e.getFullDescription());
+        return 1;
+    } catch (const std::exception& e) {
+        Ogre::LogManager::getSingleton().logMessage("Standard Exception: " + std::string(e.what()));
+        return 1;
+    } catch (...) {
+        Ogre::LogManager::getSingleton().logMessage("Unknown exception occurred");
         return 1;
     }
 }
@@ -199,7 +258,12 @@ GameApp::~GameApp()
 
     if (mSceneMgr && mOverlaySystem)
         mSceneMgr->removeRenderQueueListener(mOverlaySystem);
-    delete mOverlaySystem;
+    
+    // Only delete overlay system if we created it ourselves
+    if (mOverlaySystem != getOverlaySystem())
+    {
+        delete mOverlaySystem;
+    }
     mOverlaySystem = nullptr;
 
     delete mWeaponLabel;
@@ -252,10 +316,25 @@ void GameApp::setup()
 {
     OgreBites::ApplicationContext::setup();
     addInputListener(this);
+    
+    // Enable verbose OGRE logging for debugging
+    if (Ogre::LogManager::getSingleton().getDefaultLog())
+    {
+        Ogre::LogManager::getSingleton().getDefaultLog()->setLogDetail(Ogre::LL_BOREME);
+    }
+    
+    // Ensure all resource groups are initialized
+    Ogre::ResourceGroupManager::getSingleton().initialiseAllResourceGroups();
 
-    // Overlay system for 2D elements
-    mOverlaySystem = new Ogre::OverlaySystem();
+    // Create scene manager first
     mSceneMgr = getRoot()->createSceneManager();
+    
+    // Overlay system for 2D elements - use ApplicationContext's overlay system if available
+    mOverlaySystem = getOverlaySystem();
+    if (!mOverlaySystem)
+    {
+        mOverlaySystem = new Ogre::OverlaySystem();
+    }
     mSceneMgr->addRenderQueueListener(mOverlaySystem);
 
     // tray manager for 80s style controls

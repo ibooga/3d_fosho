@@ -8,6 +8,11 @@
 #include <OgreOverlaySystem.h>
 #include <OgreBitesConfigDialog.h>
 #include <OgreTrays.h>
+#include <OgreRoot.h>
+#include <OgreRenderWindow.h>
+#include <OgreResourceGroupManager.h>
+#include <OgreLogManager.h>
+#include <SDL.h>
 
 #include <btBulletDynamicsCommon.h>
 
@@ -108,6 +113,7 @@ public:
     void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
 
 private:
+    void configureLinuxEnvironment();
     void addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale);
     void loadLevel(const std::string& filename);
     void checkProjectiles();
