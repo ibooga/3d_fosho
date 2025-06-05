@@ -52,14 +52,8 @@ bool InputHandler::mouseMoved(const OgreBites::MouseMotionEvent& evt)
 
 bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
-    if (evt.button == OgreBites::BUTTON_LEFT)
-    {
-        Ogre::Vector3 pos = mApp->getCameraNode()->getPosition();
-        Ogre::Quaternion orient = mApp->getCameraNode()->getOrientation();
-        if (mApp->getWeapon())
-            mApp->getWeapon()->fire(pos + orient * Ogre::Vector3(0,0,-1), orient);
-    }
-    return true;
+    // Mouse button handling moved to GameApp
+    return false;
 }
 
 void InputHandler::update(float dt)
@@ -315,6 +309,7 @@ GameApp::~GameApp()
 void GameApp::setup()
 {
     OgreBites::ApplicationContext::setup();
+    // Add GameApp as the initial input listener
     addInputListener(this);
     
     // Enable verbose OGRE logging for debugging
@@ -368,8 +363,13 @@ void GameApp::setup()
     mCameraNode->attachObject(cam);
     getRenderWindow()->addViewport(cam);
 
+    // Configure mouse input before creating the input handler
+    getRenderWindow()->setMouseGrab(true);
+    getRenderWindow()->setMouseRelative(true);
+    getRenderWindow()->setMouseVisible(false);
+
     mInputHandler = new InputHandler(this);
-    addInputListener(mInputHandler);
+    // listener added at end of setup
 
     mWeapon = new Pistol(this);
     mWeaponLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Weapon", mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()), 150);
@@ -403,6 +403,9 @@ void GameApp::setup()
     spawnEnemy(Ogre::Vector3(5, 0.5f, -5));
     spawnEnemy(Ogre::Vector3(-5, 0.5f, -5));
     spawnEnemy(Ogre::Vector3(0, 0.5f, 5));
+
+    // Add input handler after all systems are initialized
+    addInputListener(mInputHandler);
 }
 
 bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
@@ -426,14 +429,51 @@ bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
 
 bool GameApp::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
+    Ogre::LogManager::getSingleton().logMessage(
+        "GameApp::mousePressed - Button: " + std::to_string(evt.button) +
+        " at (" + std::to_string(evt.x) + ", " + std::to_string(evt.y) + ")");
 
-    if (mInputHandler)
-        return mInputHandler->mousePressed(evt);
-    return false;
+    if (evt.button == OgreBites::BUTTON_LEFT)
+    {
+        if (mWeapon && mCameraNode)
+        {
+            if (mWeapon->canFire())
+            {
+                Ogre::Vector3 camPos = mCameraNode->_getDerivedPosition();
+                Ogre::Quaternion camOrient = mCameraNode->_getDerivedOrientation();
+                Ogre::Vector3 firePos = camPos + camOrient * Ogre::Vector3(0, -0.1f, -0.5f);
+
+                Ogre::LogManager::getSingleton().logMessage(
+                    "Firing weapon! Ammo: " + std::to_string(mWeapon->getAmmo()));
+
+                mWeapon->fire(firePos, camOrient);
+            }
+            else
+            {
+                Ogre::LogManager::getSingleton().logMessage(
+                    "Cannot fire - Cooldown or no ammo. Ammo: " +
+                    std::to_string(mWeapon->getAmmo()));
+            }
+        }
+        else
+        {
+            Ogre::LogManager::getSingleton().logMessage(
+                "Cannot fire - Weapon or camera node is null");
+        }
+    }
+
+    return true;
 }
 
 bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
 {
+    static bool debugPrinted = false;
+    if (!debugPrinted)
+    {
+        debugInputSystem();
+        debugPrinted = true;
+    }
+
     if (mDynamicsWorld)
         mDynamicsWorld->stepSimulation(evt.timeSinceLastFrame);
     if (mPlayer)
@@ -617,4 +657,31 @@ void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& 
     btRigidBody::btRigidBodyConstructionInfo info(0.0f, motion, shape);
     btRigidBody* body = new btRigidBody(info);
     mDynamicsWorld->addRigidBody(body);
+}
+
+void GameApp::debugInputSystem()
+{
+    Ogre::LogManager::getSingleton().logMessage("=== Input System Debug ===");
+    Ogre::LogManager::getSingleton().logMessage("SDL Video Driver: " +
+        std::string(SDL_GetCurrentVideoDriver()));
+
+    SDL_Window* sdlWindow = SDL_GetWindowFromID(
+        getRenderWindow()->getCustomAttribute("SDL_WINDOW_ID"));
+    if (sdlWindow)
+    {
+        Ogre::LogManager::getSingleton().logMessage("SDL Window found");
+        Ogre::LogManager::getSingleton().logMessage("Mouse grab: " +
+            std::string(SDL_GetWindowGrab(sdlWindow) ? "true" : "false"));
+        Ogre::LogManager::getSingleton().logMessage("Relative mouse: " +
+            std::string(SDL_GetRelativeMouseMode() ? "true" : "false"));
+    }
+
+    if (mWeapon)
+    {
+        Ogre::LogManager::getSingleton().logMessage("Weapon: " + mWeapon->getName());
+        Ogre::LogManager::getSingleton().logMessage("Ammo: " +
+            std::to_string(mWeapon->getAmmo()));
+        Ogre::LogManager::getSingleton().logMessage("Can fire: " +
+            std::string(mWeapon->canFire() ? "yes" : "no"));
+    }
 }
