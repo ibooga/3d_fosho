@@ -207,9 +207,6 @@ GameApp::~GameApp()
     delete mWeapon;
     mWeapon = nullptr;
 
-    delete mWeapon;
-    mWeapon = nullptr;
-
     for (int i = 0; i < mCollisionShapes.size(); ++i)
         delete mCollisionShapes[i];
     mCollisionShapes.clear();
@@ -351,7 +348,9 @@ bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
 bool GameApp::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
 
-    return true;
+    if (mInputHandler)
+        return mInputHandler->mousePressed(evt);
+    return false;
 }
 
 bool GameApp::frameRenderingQueued(const Ogre::FrameEvent& evt)
