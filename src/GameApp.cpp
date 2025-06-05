@@ -18,13 +18,13 @@ InputHandler::InputHandler(GameApp* app)
 
 bool InputHandler::keyPressed(const OgreBites::KeyboardEvent& evt)
 {
-    if (evt.keysym.sym == OgreBites::SDLK_w)
+    if (evt.keysym.sym == 'w')
         mDirection.z = -1;
-    else if (evt.keysym.sym == OgreBites::SDLK_s)
+    else if (evt.keysym.sym == 's')
         mDirection.z = 1;
-    else if (evt.keysym.sym == OgreBites::SDLK_a)
+    else if (evt.keysym.sym == 'a')
         mDirection.x = -1;
-    else if (evt.keysym.sym == OgreBites::SDLK_d)
+    else if (evt.keysym.sym == 'd')
         mDirection.x = 1;
     else if (evt.keysym.sym == OgreBites::SDLK_SPACE)
         mJump = true;
@@ -33,9 +33,9 @@ bool InputHandler::keyPressed(const OgreBites::KeyboardEvent& evt)
 
 bool InputHandler::keyReleased(const OgreBites::KeyboardEvent& evt)
 {
-    if (evt.keysym.sym == OgreBites::SDLK_w || evt.keysym.sym == OgreBites::SDLK_s)
+    if (evt.keysym.sym == 'w' || evt.keysym.sym == 's')
         mDirection.z = 0;
-    if (evt.keysym.sym == OgreBites::SDLK_a || evt.keysym.sym == OgreBites::SDLK_d)
+    if (evt.keysym.sym == 'a' || evt.keysym.sym == 'd')
         mDirection.x = 0;
     return true;
 }
@@ -52,15 +52,10 @@ bool InputHandler::mousePressed(const OgreBites::MouseButtonEvent& evt)
 {
     if (evt.button == OgreBites::BUTTON_LEFT)
     {
-        Ogre::Vector3 pos = mApp->mCameraNode->getPosition();
-        Ogre::Quaternion orient = mApp->mCameraNode->getOrientation();
-        if (mApp->mWeapon)
-            mApp->mWeapon->fire(pos + orient * Ogre::Vector3(0,0,-1), orient);
-        if (mApp->mWeaponLabel)
-        {
-            mApp->mWeaponLabel->setCaption(mApp->mWeapon->getName() + " - " +
-                                           std::to_string(mApp->mWeapon->getAmmo()));
-        }
+        Ogre::Vector3 pos = mApp->getCameraNode()->getPosition();
+        Ogre::Quaternion orient = mApp->getCameraNode()->getOrientation();
+        if (mApp->getWeapon())
+            mApp->getWeapon()->fire(pos + orient * Ogre::Vector3(0,0,-1), orient);
     }
     return true;
 }
@@ -70,19 +65,19 @@ void InputHandler::update(float dt)
     const float force = 10.0f;
     Ogre::Vector3 worldDir = mApp->getPlayer()->getNode()->getOrientation() * mDirection;
     mApp->getPlayer()->applyMovement(worldDir, force);
-    if (mApp->mGameState.paused || mApp->mGameState.gameOver)
+    if (mApp->getGameState().paused || mApp->getGameState().gameOver)
         return;
     const float speed = 5.0f;
     Ogre::Vector3 disp = mDirection * speed * dt;
-    mApp->mCameraNode->translate(mApp->mCameraNode->getOrientation() * disp, Ogre::Node::TS_WORLD);
+    mApp->getCameraNode()->translate(mApp->getCameraNode()->getOrientation() * disp, Ogre::Node::TS_WORLD);
   
     if (mJump)
     {
         mApp->getPlayer()->jump(4.0f);
         mJump = false;
     }
-    if (mApp->mWeapon)
-        mApp->mWeapon->update(dt);
+    if (mApp->getWeapon())
+        mApp->getWeapon()->update(dt);
 }
 
 // ---------------------------------------------------------------------
@@ -182,6 +177,18 @@ GameApp::GameApp() : OgreBites::ApplicationContext("ArcadeFPS"),
 {
 }
 
+int GameApp::go()
+{
+    try {
+        initApp();
+        getRoot()->startRendering();
+        closeApp();
+        return 0;
+    } catch (std::exception& e) {
+        return 1;
+    }
+}
+
 GameApp::~GameApp()
 {
     if (mTrayMgr)
@@ -262,7 +269,7 @@ void GameApp::setup()
 
     mTrayMgr->createLabel(OgreBites::TL_TOP, "Controls", "INSERT COIN - WASD to Move, SPACE to Jump, LMB to Shoot", 400);
     mCrosshair = mTrayMgr->createLabel(OgreBites::TL_CENTER, "Crosshair", "+", 50);
-    mHealthBar = mTrayMgr->createProgressBar(OgreBites::TL_BOTTOM, "Health", 200, 20);
+    mHealthBar = mTrayMgr->createProgressBar(OgreBites::TL_BOTTOM, "Health", "Health", 200, 20);
     mHealthBar->setProgress(1.0f);
     mScoreLabel = mTrayMgr->createLabel(OgreBites::TL_TOPRIGHT, "Score", "Score: 0", 120);
 
@@ -294,7 +301,10 @@ void GameApp::setup()
 
     // lighting
     mSceneMgr->setAmbientLight(Ogre::ColourValue(0.5f, 0.5f, 0.5f));
-    mSceneMgr->createLight()->setPosition(20, 80, 50);
+    Ogre::Light* light = mSceneMgr->createLight();
+    Ogre::SceneNode* lightNode = mSceneMgr->getRootSceneNode()->createChildSceneNode();
+    lightNode->attachObject(light);
+    lightNode->setPosition(20, 80, 50);
 
     // floor
     Ogre::Plane plane(Ogre::Vector3::UNIT_Y, 0);
@@ -325,12 +335,12 @@ bool GameApp::keyPressed(const OgreBites::KeyboardEvent& evt)
     {
         getRoot()->queueEndRendering();
     }
-    else if (evt.keysym.sym == OgreBites::SDLK_p)
+    else if (evt.keysym.sym == 'p')
     {
         if (!mGameState.gameOver)
             togglePause();
     }
-    else if (evt.keysym.sym == OgreBites::SDLK_r)
+    else if (evt.keysym.sym == 'r')
     {
         if (mGameState.gameOver)
             restartGame();
@@ -477,4 +487,56 @@ void GameApp::updateHUD()
         mScoreLabel->setCaption("Score: " + Ogre::StringConverter::toString(mGameState.score));
     if (mWeaponLabel && mWeapon)
         mWeaponLabel->setCaption(mWeapon->getName() + " - " + std::to_string(mWeapon->getAmmo()));
+}
+
+void GameApp::togglePause()
+{
+    mGameState.paused = !mGameState.paused;
+}
+
+void GameApp::restartGame()
+{
+    mGameState = GameState();
+}
+
+void GameApp::loadLevel(const std::string& filename)
+{
+    // Simple level loading from level.txt
+    std::ifstream file(filename);
+    if (!file.is_open()) return;
+    
+    std::string line;
+    while (std::getline(file, line))
+    {
+        std::istringstream iss(line);
+        std::string type;
+        float x, y, z, sx, sy, sz;
+        
+        if (iss >> type >> x >> y >> z >> sx >> sy >> sz)
+        {
+            if (type == "wall" || type == "obstacle")
+            {
+                addStaticCube(Ogre::Vector3(x, y, z), Ogre::Vector3(sx, sy, sz));
+            }
+        }
+    }
+}
+
+void GameApp::addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale)
+{
+    Ogre::Entity* cubeEntity = mSceneMgr->createEntity(Ogre::SceneManager::PT_CUBE);
+    Ogre::SceneNode* cubeNode = mSceneMgr->getRootSceneNode()->createChildSceneNode(position);
+    cubeNode->setScale(scale);
+    cubeNode->attachObject(cubeEntity);
+
+    // Add physics body
+    btCollisionShape* shape = new btBoxShape(btVector3(scale.x, scale.y, scale.z));
+    mCollisionShapes.push_back(shape);
+    btTransform t;
+    t.setIdentity();
+    t.setOrigin(btVector3(position.x, position.y, position.z));
+    btDefaultMotionState* motion = new btDefaultMotionState(t);
+    btRigidBody::btRigidBodyConstructionInfo info(0.0f, motion, shape);
+    btRigidBody* body = new btRigidBody(info);
+    mDynamicsWorld->addRigidBody(body);
 }

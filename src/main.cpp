@@ -1,10 +1,7 @@
 #include "GameApp.hpp"
 
-int main(int argc, char** argv)
+int main()
 {
     GameApp app;
-    app.initApp();
-    app.getRoot()->startRendering();
-    app.closeApp();
-    return 0;
+    return app.go();
 }

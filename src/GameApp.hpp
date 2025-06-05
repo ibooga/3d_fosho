@@ -97,15 +97,19 @@ public:
     bool keyPressed(const OgreBites::KeyboardEvent& evt) override;
     bool mousePressed(const OgreBites::MouseButtonEvent& evt) override;
     bool frameRenderingQueued(const Ogre::FrameEvent& evt) override;
+    
+    int go();
 
     Ogre::SceneNode* getCameraNode() const { return mCameraNode; }
     Player* getPlayer() const { return mPlayer; }
+    Weapon* getWeapon() const { return mWeapon; }
+    GameState& getGameState() { return mGameState; }
     void restartGame();
+    void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
 
 private:
     void addStaticCube(const Ogre::Vector3& position, const Ogre::Vector3& scale);
     void loadLevel(const std::string& filename);
-    void createBullet(const Ogre::Vector3& position, const Ogre::Quaternion& orient);
     void checkProjectiles();
 
     void togglePause();
@@ -126,9 +130,9 @@ private:
     Ogre::OverlaySystem* mOverlaySystem;
     InputHandler* mInputHandler;
 
+    Player* mPlayer;
     Weapon* mWeapon;
     OgreBites::Label* mWeaponLabel;
-
 
     std::vector<BulletProjectile*> mBullets;
     std::vector<Enemy*> mEnemies;
@@ -138,8 +142,6 @@ private:
     OgreBites::Label* mCrosshair{nullptr};
     OgreBites::ProgressBar* mHealthBar{nullptr};
     OgreBites::Label* mScoreLabel{nullptr};
-    OgreBites::Label* mWeaponLabel{nullptr};
-    Weapon* mWeapon{nullptr};
 
 
 };
