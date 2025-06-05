@@ -9,11 +9,27 @@ Weapon::Weapon(GameApp* app, const std::string& name, float rateOfFire, int ammo
 void Weapon::fire(const Ogre::Vector3& position, const Ogre::Quaternion& orient)
 {
     if (!canFire())
+    {
+        Ogre::LogManager::getSingleton().logMessage(
+            "Weapon::fire - Cannot fire (cooldown or no ammo)");
         return;
+    }
+
     --mAmmo;
     mCooldown = 1.0f / mRateOfFire;
+
+    Ogre::LogManager::getSingleton().logMessage(
+        "Weapon::fire - Firing! Ammo left: " + std::to_string(mAmmo));
+
     if (mApp)
+    {
         mApp->createBullet(position, orient);
+    }
+    else
+    {
+        Ogre::LogManager::getSingleton().logMessage(
+            "Weapon::fire - ERROR: mApp is null!");
+    }
 }
 
 void Weapon::update(float dt)

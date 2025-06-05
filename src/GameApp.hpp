@@ -121,6 +121,7 @@ private:
     void togglePause();
     void updateHUD();
     void setGameOver(bool won);
+    void debugInputSystem();
 
     void spawnEnemy(const Ogre::Vector3& position);
 
